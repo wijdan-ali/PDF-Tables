@@ -9,7 +9,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       user_tables: {
@@ -37,6 +37,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       extracted_rows: {
         Row: {
@@ -49,6 +50,7 @@ export interface Database {
           status: 'uploaded' | 'extracting' | 'extracted' | 'failed'
           error: string | null
           raw_response: string | null
+          row_order: number
           created_at: string
           updated_at: string
         }
@@ -62,6 +64,7 @@ export interface Database {
           status?: 'uploaded' | 'extracting' | 'extracted' | 'failed'
           error?: string | null
           raw_response?: string | null
+          row_order?: number
           created_at?: string
           updated_at?: string
         }
@@ -75,11 +78,17 @@ export interface Database {
           status?: 'uploaded' | 'extracting' | 'extracted' | 'failed'
           error?: string | null
           raw_response?: string | null
+          row_order?: number
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
     }
+    Views: { [_ in never]: never }
+    Functions: { [_ in never]: never }
+    Enums: { [_ in never]: never }
+    CompositeTypes: { [_ in never]: never }
   }
 }
 

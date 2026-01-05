@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 interface RouteContext {
   params: {
@@ -32,30 +33,73 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     }
 
     // Fetch rows (RLS will ensure user can only see their own rows)
-    const { data: rows, error } = await supabase
+    // Prefer row_order for manual reordering, but gracefully fall back for older DBs
+    // where the migration hasn't been applied yet.
+    let rows: any[] | null = null
+    let rowsError: any = null
+
+    const primary = await supabase
       .from('extracted_rows')
       .select('*')
       .eq('table_id', params.tableId)
+      .order('row_order', { ascending: false })
       .order('created_at', { ascending: false })
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    rows = primary.data
+    rowsError = primary.error
+
+    // Missing column (migration not applied) → fallback to created_at ordering so the app still works.
+    if (
+      rowsError &&
+      (rowsError.code === '42703' ||
+        (typeof rowsError.message === 'string' &&
+          rowsError.message.toLowerCase().includes('row_order') &&
+          rowsError.message.toLowerCase().includes('does not exist')))
+    ) {
+      const fallback = await supabase
+        .from('extracted_rows')
+        .select('*')
+        .eq('table_id', params.tableId)
+        .order('created_at', { ascending: false })
+
+      rows = fallback.data
+      rowsError = fallback.error
     }
 
-    // Generate signed URLs for PDFs and thumbnails
+    if (rowsError) {
+      return NextResponse.json({ error: rowsError.message }, { status: 500 })
+    }
+
+    // Use service client for Storage signed URLs (private bucket; avoids policy surprises)
+    let serviceClient
+    try {
+      serviceClient = createServiceClient()
+    } catch (serviceError) {
+      return NextResponse.json(
+        { error: `Service client error: ${serviceError instanceof Error ? serviceError.message : 'Failed to create service client'}` },
+        { status: 500 }
+      )
+    }
+
+    // Generate signed URLs for PDFs and thumbnails.
+    // Use a longer expiry to avoid tokens expiring while the user is viewing the table.
+    const SIGNED_URL_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7 // 7 days
     const rowsWithUrls = await Promise.all(
       (rows || []).map(async (row) => {
-        const pdfUrl = row.file_path
-          ? await supabase.storage
+        const filePath = typeof row.file_path === 'string' ? row.file_path.trim() : ''
+        const thumbnailPath = typeof row.thumbnail_path === 'string' ? row.thumbnail_path.trim() : ''
+
+        const pdfUrl = filePath
+          ? await serviceClient.storage
               .from('documents')
-              .createSignedUrl(row.file_path, 3600)
+              .createSignedUrl(filePath, SIGNED_URL_EXPIRES_IN_SECONDS)
               .then(({ data }) => data?.signedUrl)
           : undefined
 
-        const thumbnailUrl = row.thumbnail_path
-          ? await supabase.storage
+        const thumbnailUrl = thumbnailPath
+          ? await serviceClient.storage
               .from('documents')
-              .createSignedUrl(row.thumbnail_path, 3600)
+              .createSignedUrl(thumbnailPath, SIGNED_URL_EXPIRES_IN_SECONDS)
               .then(({ data }) => data?.signedUrl)
           : undefined
 

@@ -19,6 +19,7 @@ export interface ExtractedRow {
   data: Record<string, string | number | null>
   is_verified: boolean
   status: 'uploaded' | 'extracting' | 'extracted' | 'failed'
+  row_order?: number
   pdf_url?: string // signed URL (expires)
   thumbnail_url?: string // signed URL (expires)
   error?: string // error message if status='failed'
@@ -40,6 +41,7 @@ export interface UpdateTableRequest {
 export interface UpdateRowRequest {
   data?: Record<string, string | number | null>
   is_verified?: boolean
+  row_order?: number
 }
 
 export interface UploadResponse {

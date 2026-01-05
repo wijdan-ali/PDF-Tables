@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { UpdateRowRequest } from '@/types/api'
+import type { Database } from '@/types/database'
 
 interface RouteContext {
   params: {
@@ -53,7 +54,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     const body: UpdateRowRequest = await request.json()
-    const updateData: any = {
+    const updateData: Database['public']['Tables']['extracted_rows']['Update'] = {
       updated_at: new Date().toISOString(),
     }
 
@@ -63,6 +64,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     if (body.is_verified !== undefined) {
       updateData.is_verified = body.is_verified
+    }
+
+    if (body.row_order !== undefined) {
+      updateData.row_order = body.row_order
     }
 
     // Update row (RLS ensures user can only update their own rows)
@@ -78,6 +83,37 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     return NextResponse.json(row)
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Delete row (RLS ensures user can only delete their own rows)
+    const { error } = await supabase
+      .from('extracted_rows')
+      .delete()
+      .eq('id', params.rowId)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },

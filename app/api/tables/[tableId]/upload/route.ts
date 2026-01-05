@@ -50,6 +50,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         )
       }
 
+      // Enforce PDF only
+      const name = (file.name || '').toLowerCase()
+      const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf')
+      if (!isPdf) {
+        return NextResponse.json({ error: 'Only PDF files are supported' }, { status: 400 })
+      }
+
       // Upload to Storage
       const filePath = `user/${user.id}/table/${params.tableId}/row/${rowId}.pdf`
       const { error: uploadError } = await supabase.storage

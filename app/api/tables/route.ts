@@ -17,15 +17,15 @@ export async function POST(request: NextRequest) {
 
     const body: CreateTableRequest = await request.json()
 
-    if (!body.table_name || !body.columns || body.columns.length === 0) {
+    if (!body.table_name) {
       return NextResponse.json(
-        { error: 'Table name and at least one column are required' },
+        { error: 'Table name is required' },
         { status: 400 }
       )
     }
 
-    // Generate keys and validate uniqueness
-    const columns = body.columns.map((col, index) => {
+    // Generate keys and validate uniqueness (if columns provided)
+    const columns = (body.columns || []).map((col, index) => {
       const key = generateVariableKey(col.label)
       return {
         label: col.label,
@@ -35,12 +35,14 @@ export async function POST(request: NextRequest) {
       }
     })
 
+    if (columns.length > 0) {
     const keys = columns.map((c) => c.key)
     if (new Set(keys).size !== keys.length) {
       return NextResponse.json(
         { error: 'Column labels must be unique' },
         { status: 400 }
       )
+      }
     }
 
     // Insert table
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(table, { status: 201 })
+    return NextResponse.json({ table }, { status: 201 })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
