@@ -5,10 +5,6 @@ import useSWR from 'swr'
 import { useSWRConfig } from 'swr'
 import type { UploadResponse, ExtractResponse } from '@/types/api'
 import type { ExtractedRow } from '@/types/api'
-import dynamic from 'next/dynamic'
-import { junicode } from '@/app/fonts'
-
-const Silk = dynamic(() => import('@/components/Silk/Silk'), { ssr: false })
 
 // Separate grain overlay (independent from Silk noise). Tweak freely.
 const UPLOAD_GRAIN_OPACITY = 0.55
@@ -284,7 +280,7 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
 
   return (
     <div className="space-y-3">
-      {/* Upload card (Silk background + spotlight) */}
+      {/* Upload card (token surface + spotlight) */}
       <div
         ref={cardRef}
         onMouseMove={(e) => {
@@ -305,26 +301,23 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
           if (!el) return
           el.style.setProperty('--spot-o', '0')
         }}
-        className={`relative w-[380px] h-[145px] max-w-full overflow-hidden rounded-[22px] border border-white/12 ring-1 ring-inset ring-white/12 px-5 pt-6 pb-5 text-white shadow-[0_14px_26px_rgba(0,0,0,0.14)] ${
+        className={`relative w-[380px] h-[145px] max-w-full overflow-hidden rounded-[22px] border border-border bg-card text-card-foreground px-5 pt-6 pb-5 shadow-md ${
           state === 'uploading' || state === 'extracting'
             ? 'opacity-60'
             : columnsCount === 0
               ? 'cursor-not-allowed'
-              : 'transition-[border-color,transform] duration-200 ease-out hover:border-white/25'
+              : 'transition-[border-color,transform] duration-200 ease-out hover:border-ring/40'
         }`}
       >
         {/* Background layers */}
         <div className="absolute inset-0 pointer-events-none">
-          <Silk speed={2.0} scale={0.6} color="#5B6180" noiseIntensity={1.2} rotation={1.9} />
-          {/* Soft glass blur over Silk */}
-          <div className="absolute inset-0 bg-white/[0.02] backdrop-blur-[36px] backdrop-saturate-[1.15]" />
           {/* Spotlight card effect (mouse-follow) */}
           <div
             className="absolute inset-0"
             style={{
               opacity: 'var(--spot-o, 0)',
               background:
-                'radial-gradient(700px circle at var(--spot-x, 10%) var(--spot-y, 30%), rgba(100, 99, 99, 0.18), transparent 30%)',
+                'radial-gradient(700px circle at var(--spot-x, 10%) var(--spot-y, 30%), color-mix(in oklch, var(--primary) 18%, transparent), transparent 32%)',
               transition: 'opacity 180ms ease-out',
             }}
           />
@@ -346,8 +339,8 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
         {/* Foreground */}
         <div className="relative z-10 flex h-full flex-col justify-center items-start">
           <div className="space-y-2">
-            <div className={`${junicode.className} text-[16px] text-white/95 tracking-wide"`}>Upload file</div>
-            <div className="text-[12px] text-white/70">Upload a PDF to extract rows.</div>
+            <div className="font-serif text-[16px] tracking-wide">Upload file</div>
+            <div className="text-[12px] text-muted-foreground">Upload a PDF to extract rows.</div>
           </div>
 
           <button
@@ -361,7 +354,7 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
               inputRef.current?.click()
             }}
             disabled={state === 'uploading' || state === 'extracting' || columnsCount === 0}
-            className="mt-4 self-start inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3.5 py-2 text-[12px] font-medium text-white/90 transition-[background-color,border-color,transform,box-shadow,opacity] duration-200 ease-out hover:bg-white/14 hover:border-white/25 hover:-translate-y-[1px] hover:shadow-[0_10px_24px_rgba(0,0,0,0.22)] active:translate-y-0 active:bg-white/12 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-4 self-start inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary text-primary-foreground px-3.5 py-2 text-[12px] font-medium transition-[transform,box-shadow,opacity,filter] duration-200 ease-out hover:-translate-y-[1px] hover:shadow-md hover:brightness-[1.03] active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Choose PDF
           </button>
@@ -379,15 +372,15 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
       {(state === 'uploading' || state === 'extracting') && (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-            <span className="text-sm text-gray-600">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+            <span className="text-sm text-muted-foreground">
               {state === 'uploading' ? 'Uploading...' : 'Extracting data...'}
             </span>
           </div>
           {state === 'uploading' && (
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-muted rounded-full h-2">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
+                className="bg-primary h-2 rounded-full transition-all"
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
@@ -397,19 +390,19 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
 
       {state === 'failed' && (
         <div className="space-y-2">
-          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded">
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive">
             {error || 'An error occurred'}
           </div>
           <div className="flex gap-2">
             <button
               onClick={handleRetry}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors"
             >
               Retry
             </button>
             <button
               onClick={reset}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-4 py-2 border border-input rounded-xl hover:bg-accent hover:text-accent-foreground transition-colors"
             >
               Start Over
             </button>
@@ -418,7 +411,7 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
       )}
 
       {error && state !== 'failed' && (
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded text-sm">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}

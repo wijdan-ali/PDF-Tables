@@ -2,6 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { generateVariableKey } from '@/lib/utils/slugify'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
 interface AddColumnModalProps {
   isOpen: boolean
@@ -57,65 +62,55 @@ export default function AddColumnModal({ isOpen, onClose, onAdd, existingKeys }:
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-20" onClick={onClose}>
-      <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-md p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Add Column</h2>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="column-label" className="block text-sm font-medium text-gray-700 mb-1">
-              Column Name
-            </label>
-            <input
-              ref={labelInputRef}
-              id="column-label"
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g., Total Amount"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-            />
-          </div>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div className="w-full max-w-md px-4" onClick={(e) => e.stopPropagation()}>
+        <Card className="shadow-xl">
+          <CardHeader>
+            <CardTitle>Add Column</CardTitle>
+          </CardHeader>
 
-          <div>
-            <label htmlFor="column-desc" className="block text-sm font-medium text-gray-700 mb-1">
-              Description
-            </label>
-            <textarea
-              id="column-desc"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="e.g., The final amount including tax"
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none"
-            />
-          </div>
+          <form onSubmit={handleSubmit}>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="column-label">Column Name</Label>
+                <Input
+                  ref={labelInputRef}
+                  id="column-label"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="e.g., Total Amount"
+                />
+              </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded text-sm">
-              {error}
-            </div>
-          )}
+              <div className="space-y-1.5">
+                <Label htmlFor="column-desc">Description</Label>
+                <Textarea
+                  id="column-desc"
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  placeholder="e.g., The final amount including tax"
+                  rows={3}
+                />
+              </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors"
-            >
-              Add Column
-            </button>
-          </div>
-        </form>
+              {error && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+            </CardContent>
+
+            <CardFooter className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit">Add Column</Button>
+            </CardFooter>
+          </form>
+        </Card>
       </div>
     </div>
   )

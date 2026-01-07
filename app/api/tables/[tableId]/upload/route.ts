@@ -114,6 +114,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           status: 'uploaded',
           data: {},
           is_verified: false,
+          // Required by migration 003_row_order.sql (NOT NULL). Keep consistent with the backfill strategy.
+          row_order: Date.now() / 1000,
         })
 
       if (insertError) {

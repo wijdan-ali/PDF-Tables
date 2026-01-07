@@ -2,11 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
-import dynamic from 'next/dynamic'
-import { junicode } from '@/app/fonts'
 import type { ExtractedRow } from '@/types/api'
-
-const Silk = dynamic(() => import('@/components/Silk/Silk'), { ssr: false })
 
 interface RecordsCardProps {
   tableId: string
@@ -14,14 +10,10 @@ interface RecordsCardProps {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
-// Visual tuning (match your existing “silk” look)
-const SILK_PROPS = {
-  speed: 2.0,
-  scale: 0.6,
-  color: '#5B6180',
-  noiseIntensity: 1.2,
-  rotation: 1.9,
-} as const
+// Grain (match UploadPanel/Sidebar feel)
+const RECORDS_GRAIN_SCALE_PX = 40
+const RECORDS_GRAIN_CONTRAST = 1.35
+const RECORDS_GRAIN_BRIGHTNESS = 1.05
 
 export default function RecordsCard({ tableId }: RecordsCardProps) {
   const rowsKey = useMemo(() => `/api/tables/${tableId}/rows`, [tableId])
@@ -119,35 +111,52 @@ export default function RecordsCard({ tableId }: RecordsCardProps) {
         if (!el) return
         el.style.setProperty('--spot-o', '0')
       }}
-      className="relative w-[380px] h-[145px] max-w-full rounded-[22px] overflow-hidden shadow-[0_14px_26px_rgba(0,0,0,0.14)]"
+      className="relative w-[380px] h-[145px] max-w-full rounded-[22px] overflow-hidden border border-border bg-card text-card-foreground shadow-md transition-[border-color,transform] duration-200 ease-out hover:border-ring/40"
     >
-      {/* Silky border ring */}
+      {/* Background layers */}
       <div className="absolute inset-0 pointer-events-none">
-        <Silk {...SILK_PROPS} />
-        <div className="absolute inset-0 bg-white/[0.02] backdrop-blur-[30px] backdrop-saturate-[1.15]" />
+        {/* Spotlight (mouse-follow) */}
+        <div
+          className="absolute inset-0"
+          style={{
+            opacity: 'var(--spot-o, 0)',
+            background:
+              'radial-gradient(260px circle at var(--spot-x, 35%) var(--spot-y, 35%), color-mix(in oklch, var(--primary) 18%, transparent), transparent 78%)',
+            transition: 'opacity 180ms ease-out',
+          }}
+        />
+
+        {/* Grain: subtle in light, stronger in dark */}
+        <div
+          className="absolute inset-0 opacity-[0.14] dark:opacity-0"
+          style={{
+            backgroundImage:
+              `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
+            backgroundRepeat: 'repeat',
+            backgroundSize: `${Math.max(8, RECORDS_GRAIN_SCALE_PX)}px ${Math.max(8, RECORDS_GRAIN_SCALE_PX)}px`,
+            mixBlendMode: 'soft-light',
+            filter: `contrast(${RECORDS_GRAIN_CONTRAST}) brightness(${RECORDS_GRAIN_BRIGHTNESS})`,
+          }}
+        />
+        <div
+          className="absolute inset-0 opacity-0 dark:opacity-[0.5]"
+          style={{
+            backgroundImage:
+              `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
+            backgroundRepeat: 'repeat',
+            backgroundSize: `${Math.max(8, RECORDS_GRAIN_SCALE_PX)}px ${Math.max(8, RECORDS_GRAIN_SCALE_PX)}px`,
+            mixBlendMode: 'soft-light',
+            filter: `contrast(${RECORDS_GRAIN_CONTRAST}) brightness(${RECORDS_GRAIN_BRIGHTNESS})`,
+          }}
+        />
       </div>
 
-      {/* Inner surface (creates the “border only” effect) */}
-      <div className="absolute inset-[6px] rounded-[18px] bg-white" />
-
-      {/* Spotlight OVER the white surface (mouse-follow) */}
-      <div
-        className="pointer-events-none absolute inset-[6px] rounded-[18px]"
-        style={{
-          opacity: 'var(--spot-o, 0)',
-          background:
-            'radial-gradient(220px circle at var(--spot-x, 35%) var(--spot-y, 35%), rgba(131, 129, 166, 0.2), transparent 80%)',
-          mixBlendMode: 'multiply',
-          transition: 'opacity 180ms ease-out',
-        }}
-      />
-
       {/* Content */}
-      <div className="relative z-10 h-full px-6 text-[#0b1220] flex flex-col justify-center items-start">
-        <div className={`${junicode.className} text-[16px] font-bold tracking-wide`}>Number Of Records</div>
+      <div className="relative z-10 h-full px-6 flex flex-col justify-center items-start">
+        <div className="font-serif text-[16px] font-bold tracking-wide">Number Of Records</div>
 
         <div className="mt-4 flex items-center gap-3">
-          <div className="h-3.5 w-3.5 rounded-full bg-black/15" />
+          <div className="h-3.5 w-3.5 rounded-full bg-foreground/15" />
           <div className="text-[40px] leading-none font-bold">{display}</div>
         </div>
       </div>

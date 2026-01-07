@@ -5,11 +5,10 @@ import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { junicode } from '@/app/fonts'
-import dynamic from 'next/dynamic'
 import { useRef } from 'react'
-
-const Silk = dynamic(() => import('@/components/Silk/Silk'), { ssr: false })
+import { ThemeToggle } from '@/components/theme-toggle'
+import { Plus } from 'lucide-react'
+import { PanelLeftClose } from 'lucide-react'
 
 interface Table {
   id: string
@@ -17,8 +16,14 @@ interface Table {
   updated_at: string
 }
 
+interface SidebarProps {
+  collapsed?: boolean
+  onToggleCollapsed?: () => void
+}
+
 const TABLE_NAME_UPDATED_EVENT = 'pdf-tables:table-name-updated'
 const TABLE_TOUCHED_EVENT = 'pdf-tables:table-touched'
+const TABLE_CREATED_EVENT = 'pdf-tables:table-created'
 const SIDEBAR_TABLES_CACHE_KEY = 'pdf-tables:sidebar-tables-cache'
 
 // Tune these to control the extra grain layer (separate from Silk's noiseIntensity).
@@ -44,7 +49,7 @@ function readTablesCache(): Table[] {
   }
 }
 
-export default function Sidebar() {
+export default function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [tables, setTables] = useState<Table[]>(() => (typeof window === 'undefined' ? [] : readTablesCache()))
@@ -129,8 +134,42 @@ export default function Sidebar() {
     return () => window.removeEventListener(TABLE_TOUCHED_EVENT, onTouched as EventListener)
   }, [])
 
+  // When a new table is created from /tables/new, merge it into the sidebar list immediately.
+  useEffect(() => {
+    const onCreated = (evt: Event) => {
+      const e = evt as CustomEvent<{ table: Table }>
+      const table = e.detail?.table
+      if (!table?.id) return
+
+      setTables((prev) => {
+        // Avoid duplicates if sidebar already has it (e.g. after a refresh).
+        const exists = prev.some((t) => t.id === table.id)
+        if (exists) return prev
+
+        const next: Table[] = [
+          {
+            id: table.id,
+            table_name: table.table_name ?? 'Untitled',
+            updated_at: table.updated_at ?? new Date().toISOString(),
+          },
+          ...prev,
+        ]
+        next.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0))
+        return next
+      })
+    }
+
+    window.addEventListener(TABLE_CREATED_EVENT, onCreated as EventListener)
+    return () => window.removeEventListener(TABLE_CREATED_EVENT, onCreated as EventListener)
+  }, [])
+
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-80 z-50">
+    <aside
+      className={[
+        'fixed left-0 top-0 bottom-0 w-80 z-50 transition-transform duration-300 ease-out',
+        collapsed ? '-translate-x-full' : 'translate-x-0',
+      ].join(' ')}
+    >
       <div
         ref={shellRef}
         onMouseMove={(e) => {
@@ -151,20 +190,19 @@ export default function Sidebar() {
           if (!el) return
           el.style.setProperty('--spot-o', '0')
         }}
-        className="relative h-full overflow-hidden rounded-tr-[28px] rounded-br-[28px]"
+        className="relative h-full overflow-hidden rounded-tr-[28px] rounded-br-[28px] bg-sidebar text-sidebar-foreground"
       >
         {/* Background */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-tr-[28px] rounded-br-[28px]">
-          <Silk speed={2.0} scale={0.6} color="#5B6180" noiseIntensity={1.2} rotation={1.9} />
-          {/* Glass blur layer over Silk */}
-          <div className="absolute inset-0 rounded-tr-[28px] rounded-br-[28px] bg-white/[0.02] backdrop-blur-[45px] backdrop-saturate-[1.25]" />
+          {/* Subtle gradient wash (token-based) */}
+          <div className="absolute inset-0 rounded-tr-[28px] rounded-br-[28px] bg-gradient-to-b from-sidebar via-sidebar to-sidebar/95" />
           {/* Spotlight card effect (mouse-follow) */}
           <div
             className="absolute inset-0 rounded-tr-[28px] rounded-br-[28px]"
             style={{
               opacity: 'var(--spot-o, 0)',
               background:
-                'radial-gradient(300px circle at var(--spot-x, 50%) var(--spot-y, 20%), rgba(105, 104, 104, 0.16), transparent 55%)',
+                'radial-gradient(320px circle at var(--spot-x, 50%) var(--spot-y, 20%), color-mix(in oklch, var(--sidebar-primary) 18%, transparent), transparent 58%)',
               transition: 'opacity 180ms ease-out',
             }}
           />
@@ -185,45 +223,61 @@ export default function Sidebar() {
         </div>
 
         {/* Right edge lines (no gap): outer border + inner highlight */}
-        <div className="pointer-events-none absolute z-30 inset-y-0 right-0 w-px bg-white/15" />
-        <div className="pointer-events-none absolute z-30 inset-y-6 right-[1px] w-px bg-gradient-to-b from-transparent via-white/60 to-transparent opacity-95" />
+        <div className="pointer-events-none absolute z-30 inset-y-0 right-0 w-px bg-sidebar-border" />
+        <div className="pointer-events-none absolute z-30 inset-y-6 right-[1px] w-px bg-gradient-to-b from-transparent via-sidebar-foreground/30 to-transparent opacity-95" />
 
         {/* Foreground */}
-        <div className="relative z-10 flex h-full flex-col px-5 pt-10 pb-5 text-white">
+        <div className="relative z-10 flex h-full flex-col px-5 pt-10 pb-5">
           <div className="pb-4">
-            <Link
-              href="/tables"
-              className={`${junicode.className} text-[25px] leading-none font-normal tracking-tight text-white/95 hover:text-white transition-colors`}
-            >
-              PDF Tables
-            </Link>
+            <div className="flex items-center justify-between gap-3">
+              <Link
+                href="/tables"
+                className="font-serif text-[25px] leading-none font-normal tracking-tight text-sidebar-foreground/95 hover:text-sidebar-foreground transition-colors"
+              >
+                PDF Tables
+              </Link>
+              <div className="flex items-center gap-2">
+                <ThemeToggle className="px-2 py-1.5" />
+                <button
+                  type="button"
+                  aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+                  onClick={() => onToggleCollapsed?.()}
+                  className="inline-flex items-center justify-center rounded-xl border border-border bg-card px-2 py-1.5 text-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
             {/* Divider */}
-            <div className="mt-5 h-px w-full bg-gradient-to-r from-transparent from-[0.1px] via-white/50 to-transparent to-[calc(100%-0.1px)]" />
+            <div className="mt-5 h-px w-full bg-gradient-to-r from-transparent from-[0.1px] via-sidebar-foreground/35 to-transparent to-[calc(100%-0.1px)]" />
           </div>
 
           <div className="pt-2 pb-5">
             <Link
               href="/tables/new"
-              className="group flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-[15px] font-medium text-white/90 transition-[background-color,border-color,transform,box-shadow] duration-200 ease-out hover:bg-white/14 hover:border-white/25 hover:-translate-y-[1px] hover:shadow-[0_10px_24px_rgba(0,0,0,0.25)] active:translate-y-0 active:bg-white/12"
+              className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-primary/35 bg-primary text-primary-foreground px-4 py-3 text-[15px] font-medium shadow-sm backdrop-blur-md transition-[background-color,border-color,transform,box-shadow,filter] duration-200 ease-out hover:-translate-y-[1px] hover:shadow-md hover:brightness-[1.03] active:translate-y-0 active:brightness-[0.99] dark:border-primary/40"
             >
-              <span className="text-lg leading-none text-white/90 transition-transform duration-200 ease-out group-hover:scale-[1.02]">
-                +
+              {/* subtle glass highlight */}
+              <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary-foreground/18 to-transparent opacity-60 transition-opacity duration-200 group-hover:opacity-80" />
+
+              <span className="relative inline-flex h-7 w-7 items-center justify-center rounded-full border border-primary-foreground/45 bg-primary-foreground/14 text-primary-foreground transition-[border-color,background-color,transform] duration-200 ease-out group-hover:border-primary-foreground/60 group-hover:bg-primary-foreground/18 group-hover:scale-[1.02]">
+                <Plus className="h-4 w-4" aria-hidden="true" />
               </span>
               <span>New Table</span>
             </Link>
           </div>
 
           <div className="flex-1 min-h-0">
-            <div className="px-1 pb-2 text-[13px] font-semibold tracking-[0.18em] text-[#B1C2E4]">
+            <div className="px-1 pb-2 text-[13px] font-semibold tracking-[0.18em] text-sidebar-foreground/60">
               TABLES
             </div>
 
             <div className="h-full overflow-y-auto pr-1">
               {/* Only show Loading when we truly have no cached tables */}
               {loading && tables.length === 0 ? (
-                <div className="px-2 py-2 text-sm text-white/70">Loading...</div>
+                <div className="px-2 py-2 text-sm text-sidebar-foreground/70">Loading...</div>
               ) : tables.length === 0 ? (
-                <div className="px-2 py-2 text-sm text-white/70">No tables yet</div>
+                <div className="px-2 py-2 text-sm text-sidebar-foreground/70">No tables yet</div>
               ) : (
                 <div className="space-y-1.5">
                   {tables.map((table) => {
@@ -234,10 +288,10 @@ export default function Sidebar() {
                         href={`/tables/${table.id}`}
                         className={[
                           'block rounded-xl px-4 py-2.5 text-[15px] leading-snug transition-[background-color,border-color,transform,box-shadow,color] duration-200 ease-out',
-                          'border border-transparent text-white/85',
+                          'border border-transparent text-sidebar-foreground/85',
                           isActive
-                            ? 'bg-white/12 border-white/20 text-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
-                            : 'hover:bg-white/8 hover:text-white/95 hover:-translate-y-[1px]',
+                            ? 'bg-sidebar-primary/10 border-sidebar-primary/25 text-sidebar-foreground shadow-[inset_0_1px_0_color-mix(in_oklch,var(--sidebar-foreground)_12%,transparent)] dark:bg-sidebar-primary/20 dark:border-sidebar-primary/35 dark:shadow-[inset_0_1px_0_color-mix(in_oklch,var(--sidebar-primary-foreground)_16%,transparent)]'
+                            : 'hover:bg-sidebar-accent/70 hover:text-sidebar-foreground hover:border-sidebar-border/80 hover:shadow-sm dark:hover:bg-sidebar-accent/55 dark:hover:border-sidebar-foreground/20',
                         ].join(' ')}
                       >
                         {table.table_name}

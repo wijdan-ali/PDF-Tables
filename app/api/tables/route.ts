@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { generateVariableKey } from '@/lib/utils/slugify'
 import type { CreateTableRequest } from '@/types/api'
@@ -59,6 +60,10 @@ export async function POST(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    // Ensure server-rendered pages that list tables (e.g. /tables) don’t stay stale.
+    // This is especially important if the route is statically cached in some environments.
+    revalidatePath('/tables')
 
     return NextResponse.json({ table }, { status: 201 })
   } catch (error) {

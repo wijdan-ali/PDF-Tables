@@ -1,13 +1,11 @@
-/**
- * Junicode (Regular + Bold)
- * ------------------------
- * Junicode is bundled locally under `public/fonts/junicode/` (from the official release zip)
- * and wired via `@font-face` in `app/globals.css`.
- */
-export const junicode = {
-  className: 'font-junicode',
-  variable: '--font-junicode',
-} as const
+import { Antic } from 'next/font/google'
+
+export const antic = Antic({
+  weight: ['400'],
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-antic',
+})
 
 /**
  * SF Pro Display (Apple proprietary font)

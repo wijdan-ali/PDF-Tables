@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { junicode } from '@/app/fonts'
 
 interface EditableTableNameProps {
   tableId: string
@@ -101,7 +100,7 @@ export default function EditableTableName({ tableId, initialName, onUpdate }: Ed
       <div className="grid">
         <h1
           onClick={() => setIsEditing(true)}
-          className={`${junicode.className} col-start-1 row-start-1 text-[34px] font-bold text-gray-900 cursor-text hover:bg-gray-50 transition-colors leading-[1.25] whitespace-pre-wrap break-words ${
+          className={`font-serif col-start-1 row-start-1 text-[34px] font-bold text-foreground cursor-text hover:bg-accent/50 transition-colors leading-[1.25] whitespace-pre-wrap break-words ${
             isEditing ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}
           style={{ margin: 0 }}
@@ -122,10 +121,9 @@ export default function EditableTableName({ tableId, initialName, onUpdate }: Ed
           onKeyDown={handleKeyDown}
           disabled={isSaving}
           rows={1}
-          className={`${junicode.className} col-start-1 row-start-1 w-full min-w-0 text-[34px] font-bold bg-transparent border-none outline-none focus:outline-none p-0 m-0 leading-[1.25] resize-none overflow-hidden ${
+          className={`font-serif col-start-1 row-start-1 w-full min-w-0 text-[34px] font-bold bg-transparent border-none outline-none focus:outline-none p-0 m-0 leading-[1.25] resize-none overflow-hidden text-foreground ${
             isEditing ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
-          style={{ color: 'rgb(55, 53, 47)' }}
         />
       </div>
     </div>

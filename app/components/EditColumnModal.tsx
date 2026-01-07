@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { Column } from '@/types/api'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
 interface EditColumnModalProps {
   isOpen: boolean
@@ -46,63 +51,53 @@ export default function EditColumnModal({ isOpen, column, onClose, onSave }: Edi
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onMouseDown={onClose}>
-      <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-md p-6"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Edit Column</h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
+      <div className="w-full max-w-md px-4" onMouseDown={(e) => e.stopPropagation()}>
+        <Card className="shadow-xl">
+          <CardHeader>
+            <CardTitle>Edit Column</CardTitle>
+          </CardHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="edit-column-label" className="block text-sm font-medium text-gray-700 mb-1">
-              Column Name
-            </label>
-            <input
-              ref={labelInputRef}
-              id="edit-column-label"
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-            />
-          </div>
+          <form onSubmit={handleSubmit}>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-column-label">Column Name</Label>
+                <Input
+                  ref={labelInputRef}
+                  id="edit-column-label"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                />
+              </div>
 
-          <div>
-            <label htmlFor="edit-column-desc" className="block text-sm font-medium text-gray-700 mb-1">
-              Description
-            </label>
-            <textarea
-              id="edit-column-desc"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none"
-            />
-          </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-column-desc">Description</Label>
+                <Textarea
+                  id="edit-column-desc"
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  rows={3}
+                />
+              </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded text-sm">
-              {error}
-            </div>
-          )}
+              {error && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+            </CardContent>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors"
-            >
-              Save
-            </button>
-          </div>
-        </form>
+            <CardFooter className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit">Save</Button>
+            </CardFooter>
+          </form>
+        </Card>
       </div>
     </div>
   )

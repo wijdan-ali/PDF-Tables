@@ -3,6 +3,11 @@
 import { useState } from 'react'
 import { generateVariableKey } from '@/lib/utils/slugify'
 import type { Column } from '@/types/api'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
 interface SchemaEditorProps {
   tableId: string
@@ -114,109 +119,112 @@ export default function SchemaEditor({ tableId, initialColumns }: SchemaEditorPr
   return (
     <div>
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded mb-4">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive mb-4">
           {error}
         </div>
       )}
 
       <div className="space-y-4">
         {columns.map((column, index) => (
-          <div key={index} className="p-4 border border-gray-200 rounded-lg">
+          <Card key={index}>
             <div className="flex gap-2 items-start">
-              <div className="flex-1 space-y-3">
+              <CardContent className="flex-1 space-y-3 pt-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <Label className="mb-1 block text-sm font-medium" htmlFor={`schema-label-${index}`}>
                     Column Label
-                  </label>
-                  <input
+                  </Label>
+                  <Input
+                    id={`schema-label-${index}`}
                     type="text"
                     value={column.label}
                     onChange={(e) => updateColumn(index, 'label', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="e.g., Total Amount"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <Label className="mb-1 block text-sm font-medium" htmlFor={`schema-desc-${index}`}>
                     Description
-                  </label>
-                  <textarea
+                  </Label>
+                  <Textarea
+                    id={`schema-desc-${index}`}
                     value={column.desc}
                     onChange={(e) => updateColumn(index, 'desc', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="e.g., The final amount including tax"
                     rows={2}
                   />
                 </div>
                 {column.key && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-500 mb-1">
+                    <Label className="mb-1 block text-sm font-medium text-muted-foreground" htmlFor={`schema-key-${index}`}>
                       Variable Key
-                    </label>
-                    <input
+                    </Label>
+                    <Input
+                      id={`schema-key-${index}`}
                       type="text"
                       value={column.key}
                       readOnly
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded text-gray-600"
+                      className="bg-muted text-muted-foreground"
                     />
                   </div>
                 )}
-              </div>
+              </CardContent>
               <div className="flex flex-col gap-2 ml-4">
-                <button
+                <Button
                   type="button"
                   onClick={() => moveColumn(index, 'up')}
                   disabled={index === 0}
-                  className="px-2 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="outline"
+                  size="sm"
                 >
                   ↑
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => moveColumn(index, 'down')}
                   disabled={index === columns.length - 1}
-                  className="px-2 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="outline"
+                  size="sm"
                 >
                   ↓
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => removeColumn(index)}
-                  className="px-2 py-1 text-sm text-red-600 hover:text-red-700 border border-red-200 rounded hover:bg-red-50"
+                  variant="destructive"
+                  size="sm"
                 >
                   Delete
-                </button>
+                </Button>
               </div>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
 
       <div className="flex gap-4 mt-6">
-        <button
+        <Button
           type="button"
           onClick={addColumn}
-          className="px-4 py-2 text-sm text-blue-600 hover:text-blue-700 border border-blue-200 rounded hover:bg-blue-50"
+          variant="outline"
         >
           + Add Column
-        </button>
+        </Button>
         {isEditing && (
           <>
-            <button
+            <Button
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
               {isSaving ? 'Saving...' : 'Save Changes'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={handleCancel}
-              className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+              variant="outline"
             >
               Cancel
-            </button>
+            </Button>
           </>
         )}
       </div>

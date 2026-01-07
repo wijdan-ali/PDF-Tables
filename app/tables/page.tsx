@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default async function TablesPage() {
   const supabase = await createClient()
@@ -22,12 +24,12 @@ export default async function TablesPage() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-gray-900 mb-2">All Tables</h1>
-        <p className="text-gray-600">Create and manage your data extraction tables</p>
+        <h1 className="text-3xl font-semibold text-foreground mb-2">All Tables</h1>
+        <p className="text-muted-foreground">Create and manage your data extraction tables</p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded mb-4">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive mb-4">
           Error loading tables: {error.message}
         </div>
       )}
@@ -36,15 +38,14 @@ export default async function TablesPage() {
         <div className="text-center py-16">
           <div className="max-w-md mx-auto">
             <div className="text-6xl mb-4">📊</div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">No tables yet</h2>
-            <p className="text-gray-600 mb-6">Create your first table to start extracting data from PDFs</p>
-          <Link
-            href="/tables/new"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors"
-          >
-                <span>+</span>
+            <h2 className="text-2xl font-semibold text-foreground mb-2">No tables yet</h2>
+            <p className="text-muted-foreground mb-6">Create your first table to start extracting data from PDFs</p>
+            <Button asChild>
+              <Link href="/tables/new">
+                <span className="mr-2">+</span>
                 <span>New Table</span>
-          </Link>
+              </Link>
+            </Button>
           </div>
         </div>
       ) : (
@@ -53,14 +54,17 @@ export default async function TablesPage() {
             <Link
               key={table.id}
               href={`/tables/${table.id}`}
-                className="block p-6 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:shadow-sm transition-all group"
+              className="block"
             >
-                <h2 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-gray-700">
-                  {table.table_name}
-                </h2>
-              <p className="text-sm text-gray-500">
-                Updated {new Date(table.updated_at).toLocaleDateString()}
-              </p>
+              <Card className="hover:shadow-md">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">{table.table_name}</CardTitle>
+                  <CardDescription>
+                    Updated {new Date(table.updated_at).toLocaleDateString()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent />
+              </Card>
             </Link>
           ))}
         </div>

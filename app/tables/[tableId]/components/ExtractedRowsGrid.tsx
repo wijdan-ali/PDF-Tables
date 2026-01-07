@@ -8,6 +8,7 @@ import ConfirmDialog from '@/app/components/ConfirmDialog'
 import EditColumnModal from '@/app/components/EditColumnModal'
 import { generateVariableKey } from '@/lib/utils/slugify'
 import type { Column, ExtractedRow } from '@/types/api'
+import { Plus } from 'lucide-react'
 
 interface ExtractedRowsGridProps {
   tableId: string
@@ -28,6 +29,23 @@ const fetcher = async (url: string): Promise<ExtractedRow[]> => {
   return data as ExtractedRow[]
 }
 
+function AddColumnButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl border border-primary/35 bg-primary px-2.5 py-1.5 text-[13px] font-medium text-primary-foreground shadow-sm backdrop-blur-md transition-[transform,box-shadow,filter] duration-200 ease-out hover:-translate-y-[1px] hover:shadow-md hover:brightness-[1.03] active:translate-y-0 active:brightness-[0.99]"
+    >
+      {/* subtle glass highlight */}
+      <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary-foreground/18 to-transparent opacity-60 transition-opacity duration-200 group-hover:opacity-80" />
+      <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full border border-primary-foreground/45 bg-primary-foreground/14 text-primary-foreground transition-[border-color,background-color,transform] duration-200 ease-out group-hover:border-primary-foreground/60 group-hover:bg-primary-foreground/18">
+        <Plus className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <span className="relative">Add Column</span>
+    </button>
+  )
+}
+
 export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }: ExtractedRowsGridProps) {
   const [editingCell, setEditingCell] = useState<{ rowId: string; columnKey: string } | null>(null)
   const [editingValue, setEditingValue] = useState<string>('')
@@ -37,6 +55,8 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
   const rowsContainerRef = useRef<HTMLDivElement>(null)
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const tableWrapRef = useRef<HTMLDivElement>(null)
+  const colHeaderRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const colCellRefs = useRef<Record<string, Record<string, HTMLDivElement | null>>>({})
 
   // Column resizing
   const MIN_COL_WIDTH = 160
@@ -54,6 +74,20 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
   const [isDeletingColumn, setIsDeletingColumn] = useState(false)
   const [confirmDeleteColumnKey, setConfirmDeleteColumnKey] = useState<string | null>(null)
 
+  // This component instance persists across /tables/[tableId] route changes due to the layout shell.
+  // Reset per-table UI state so “open” dialogs don’t carry over to the next table.
+  useEffect(() => {
+    setEditColumn(null)
+    setConfirmDeleteColumnKey(null)
+    setIsAddColumnOpen(false)
+    setEditingCell(null)
+    setEditingValue('')
+    setSelectedRowIds(new Set())
+    setLastSelectedRowId(null)
+    setConfirmDeleteRowsOpen(false)
+    setConfirmDeleteSingleRowId(null)
+  }, [tableId])
+
   // Row selection mode (Notion-like)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
   const [lastSelectedRowId, setLastSelectedRowId] = useState<string | null>(null)
@@ -68,7 +102,34 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
   const [draggingRowId, setDraggingRowId] = useState<string | null>(null)
   const [dragOrder, setDragOrder] = useState<string[] | null>(null)
   const dragPointerIdRef = useRef<number | null>(null)
-  const [dropIndicatorId, setDropIndicatorId] = useState<string | null>(null)
+  const flipPrevTopsRef = useRef<Map<string, number> | null>(null)
+  const [dragPointer, setDragPointer] = useState<{ x: number; y: number } | null>(null)
+  const [dragGhostRect, setDragGhostRect] = useState<{ left: number; top: number; width: number; height: number } | null>(
+    null
+  )
+  const dragGhostOffsetRef = useRef<{ x: number; y: number } | null>(null)
+  const [dragHasMoved, setDragHasMoved] = useState(false)
+
+  // Column drag-reorder (drag the header itself)
+  const [draggingColKey, setDraggingColKey] = useState<string | null>(null)
+  const [colDragOrderKeys, setColDragOrderKeys] = useState<string[] | null>(null)
+  const colPointerIdRef = useRef<number | null>(null)
+  const colFlipPrevLeftsRef = useRef<Record<string, number> | null>(null)
+  const [colDragPointer, setColDragPointer] = useState<{ x: number; y: number } | null>(null)
+  const [colGhostRect, setColGhostRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  const colGhostOffsetRef = useRef<{ x: number; y: number } | null>(null)
+  const [colDragHasMoved, setColDragHasMoved] = useState(false)
+  const colDropPrevLeftsRef = useRef<Record<string, number> | null>(null)
+
+  const captureRowTops = (ids: string[]) => {
+    const m = new Map<string, number>()
+    for (const id of ids) {
+      const el = rowRefs.current[id]
+      if (!el) continue
+      m.set(id, el.getBoundingClientRect().top)
+    }
+    flipPrevTopsRef.current = m
+  }
 
   const { data: rows, error, mutate } = useSWR<ExtractedRow[]>(
     `/api/tables/${tableId}/rows`,
@@ -86,11 +147,25 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
       revalidateOnReconnect: true,
       focusThrottleInterval: 60 * 1000,
       // Avoid revalidations while the user is actively interacting (prevents focus/selection quirks).
-      isPaused: () => isSaving || editingCell !== null || selectionMode || draggingRowId !== null,
+      isPaused: () =>
+        isSaving || editingCell !== null || selectionMode || draggingRowId !== null || draggingColKey !== null,
     }
   )
 
   const sortedColumns = [...columns].sort((a, b) => a.order - b.order)
+  const columnsByKey = (() => {
+    const m: Record<string, Column> = {}
+    for (let i = 0; i < sortedColumns.length; i++) {
+      const c = sortedColumns[i]
+      m[c.key] = c
+    }
+    return m
+  })()
+
+  // Column drag only reorders HEADER while dragging; body stays stable until drop.
+  const headerOrderKeys = colDragOrderKeys ?? sortedColumns.map((c) => c.key)
+  const headerColumns = headerOrderKeys.map((k) => columnsByKey[k]).filter(Boolean)
+  const bodyColumns = sortedColumns
 
   const getRowOrderValue = (r: ExtractedRow) => {
     if (typeof r.row_order === 'number') return r.row_order
@@ -105,12 +180,53 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     return copy
   }
 
+  const persistColumnOrder = async (orderedKeys: string[]) => {
+    if (isSavingColumn) return
+    const prevColumns = columns
+    if (!orderedKeys?.length) return
+
+    const orderByKey: Record<string, number> = {}
+    for (let i = 0; i < orderedKeys.length; i++) {
+      orderByKey[orderedKeys[i]] = i
+    }
+
+    const nextColumns = prevColumns
+      .map((c) => (orderByKey[c.key] !== undefined ? { ...c, order: orderByKey[c.key] } : c))
+      .sort((a, b) => a.order - b.order)
+
+    // Optimistic UI update
+    setIsSavingColumn(true)
+    if (onColumnsChange) onColumnsChange(nextColumns)
+
+    try {
+      const res = await fetch(`/api/tables/${tableId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columns: nextColumns }),
+      })
+      if (!res.ok) throw new Error('Failed to reorder columns')
+      if (!onColumnsChange) window.location.reload()
+
+      window.dispatchEvent(
+        new CustomEvent('pdf-tables:table-touched', {
+          detail: { tableId, updated_at: new Date().toISOString() },
+        })
+      )
+    } catch (e) {
+      if (onColumnsChange) onColumnsChange(prevColumns)
+      alert('Failed to reorder columns. Please try again.')
+    } finally {
+      setIsSavingColumn(false)
+    }
+  }
+
   // SWR cache can briefly contain non-array data (e.g. prior fetcher returned an error object).
   // Guard all row list ops to avoid runtime crashes.
   const rowsList: ExtractedRow[] | null = Array.isArray(rows) ? (rows as ExtractedRow[]) : null
   const hasServerRowOrder = !!rowsList?.some((r) => typeof r.row_order === 'number')
   const [pendingOrderIds, setPendingOrderIds] = useState<string[] | null>(null)
   const isDragActive = draggingRowId !== null
+  const isColDragActive = draggingColKey !== null
 
   const baseRowIds = rowsList?.map((r) => r.id) ?? []
 
@@ -169,6 +285,70 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
   const rowsById = new Map((rowsList ?? []).map((r) => [r.id, r] as const))
   const displayRows = displayRowIds.map((id) => rowsById.get(id)).filter(Boolean) as ExtractedRow[]
 
+  const ghostRow =
+    dragHasMoved && draggingRowId ? (rowsById.get(draggingRowId) as ExtractedRow | undefined) : undefined
+
+  const ghostColumn = colDragHasMoved && draggingColKey ? columnsByKey[draggingColKey] : undefined
+
+  const captureColLefts = (keys: string[]) => {
+    const pos: Record<string, number> = {}
+    // Header cells
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]
+      const el = colHeaderRefs.current[k]
+      if (!el) continue
+      pos[`h:${k}`] = el.getBoundingClientRect().left
+    }
+    colFlipPrevLeftsRef.current = pos
+  }
+
+  const captureBodyLeftsForDrop = (keys: string[]) => {
+    const pos: Record<string, number> = {}
+    for (let r = 0; r < displayRows.length; r++) {
+      const rowId = displayRows[r].id
+      const rowMap = colCellRefs.current[rowId]
+      if (!rowMap) continue
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i]
+        const el = rowMap[k]
+        if (!el) continue
+        pos[`c:${rowId}:${k}`] = el.getBoundingClientRect().left
+      }
+    }
+    colDropPrevLeftsRef.current = pos
+  }
+
+  const beginColumnDrag = (columnKey: string, e: React.PointerEvent) => {
+    if (!sortedColumns.length) return
+    if (selectionMode || editingCell !== null || isSaving || isSavingColumn || isDeletingColumn) return
+    if (draggingRowId !== null) return
+    if (resizeRef.current) return
+    if (e.button !== 0) return
+
+    const target = e.target as HTMLElement | null
+    if (target?.closest('button')) return
+    if (target?.closest('[data-resize-handle="true"]')) return
+
+    e.preventDefault()
+    e.stopPropagation()
+
+    colPointerIdRef.current = e.pointerId
+    setDraggingColKey(columnKey)
+    setColDragOrderKeys(headerColumns.map((c) => c.key))
+    setColDragPointer({ x: e.clientX, y: e.clientY })
+    setColDragHasMoved(false)
+
+    const el = colHeaderRefs.current[columnKey]
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      setColGhostRect({ left: rect.left, top: rect.top, width: rect.width, height: rect.height })
+      colGhostOffsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    } else {
+      setColGhostRect(null)
+      colGhostOffsetRef.current = null
+    }
+  }
+
   const beginRowDrag = (rowId: string, e: React.PointerEvent) => {
     if (!rowsList?.length) return
     if (selectionMode || editingCell !== null || isSaving) return
@@ -181,14 +361,154 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     dragPointerIdRef.current = e.pointerId
     setDraggingRowId(rowId)
     setDragOrder(displayRowIds.slice())
-    setDropIndicatorId(null)
+    setDragPointer({ x: e.clientX, y: e.clientY })
+    setDragHasMoved(false)
+
+    const el = rowRefs.current[rowId]
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      setDragGhostRect({ left: rect.left, top: rect.top, width: rect.width, height: rect.height })
+      dragGhostOffsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    } else {
+      setDragGhostRect(null)
+      dragGhostOffsetRef.current = null
+    }
   }
+
+  // FLIP animation for row reordering while dragging (smooth slide)
+  useLayoutEffect(() => {
+    if (!draggingRowId) return
+    const prev = flipPrevTopsRef.current
+    if (!prev) return
+    flipPrevTopsRef.current = null
+
+    const cleanups: Array<() => void> = []
+
+    prev.forEach((prevTop, id) => {
+      const el = rowRefs.current[id]
+      if (!el) return
+      const nextTop = el.getBoundingClientRect().top
+      const delta = prevTop - nextTop
+      if (!delta) return
+
+      el.style.transition = 'transform 0s'
+      el.style.transform = `translateY(${delta}px)`
+      // Force reflow so the browser picks up the transform before we animate it back.
+      void el.getBoundingClientRect()
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform 180ms ease'
+        el.style.transform = 'translateY(0)'
+      })
+
+      const t = window.setTimeout(() => {
+        // Clear inline styles (lets future drags re-apply cleanly)
+        if (el.style.transform === 'translateY(0)') el.style.transform = ''
+        if (el.style.transition.includes('transform')) el.style.transition = ''
+      }, 220)
+      cleanups.push(() => window.clearTimeout(t))
+    })
+
+    return () => {
+      cleanups.forEach((fn) => fn())
+    }
+  }, [dragOrder, draggingRowId])
+
+  // FLIP animation for column reordering while dragging (smooth slide)
+  useLayoutEffect(() => {
+    if (!draggingColKey) return
+    const prev = colFlipPrevLeftsRef.current
+    if (!prev) return
+    colFlipPrevLeftsRef.current = null
+
+    const keys = colDragOrderKeys ?? headerColumns.map((c) => c.key)
+    const cleanups: Array<() => void> = []
+
+    const animateEl = (el: HTMLElement, prevLeft?: number) => {
+      if (prevLeft === undefined) return
+      const nextLeft = el.getBoundingClientRect().left
+      const dx = prevLeft - nextLeft
+      if (!dx) return
+
+      el.style.transition = 'transform 0s'
+      el.style.transform = `translateX(${dx}px)`
+      void el.getBoundingClientRect()
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform 180ms ease'
+        el.style.transform = 'translateX(0)'
+      })
+
+      const t = window.setTimeout(() => {
+        if (el.style.transform === 'translateX(0)') el.style.transform = ''
+        if (el.style.transition.includes('transform')) el.style.transition = ''
+      }, 220)
+      cleanups.push(() => window.clearTimeout(t))
+    }
+
+    // Header
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]
+      const el = colHeaderRefs.current[k]
+      if (!el) continue
+      animateEl(el, prev[`h:${k}`])
+    }
+
+    return () => {
+      cleanups.forEach((fn) => fn())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colDragOrderKeys, draggingColKey])
+
+  // After a column is dropped (and columns prop updates), animate the BODY cells quickly into place.
+  useLayoutEffect(() => {
+    const prev = colDropPrevLeftsRef.current
+    if (!prev) return
+    colDropPrevLeftsRef.current = null
+
+    const keys = sortedColumns.map((c) => c.key)
+    const cleanups: Array<() => void> = []
+
+    for (let r = 0; r < displayRows.length; r++) {
+      const rowId = displayRows[r].id
+      const rowMap = colCellRefs.current[rowId]
+      if (!rowMap) continue
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i]
+        const el = rowMap[k]
+        if (!el) continue
+        const prevLeft = prev[`c:${rowId}:${k}`]
+        if (prevLeft === undefined) continue
+        const nextLeft = el.getBoundingClientRect().left
+        const dx = prevLeft - nextLeft
+        if (!dx) continue
+
+        el.style.transition = 'transform 0s'
+        el.style.transform = `translateX(${dx}px)`
+        void el.getBoundingClientRect()
+        requestAnimationFrame(() => {
+          el.style.transition = 'transform 140ms ease'
+          el.style.transform = 'translateX(0)'
+        })
+
+        const t = window.setTimeout(() => {
+          if (el.style.transform === 'translateX(0)') el.style.transform = ''
+          if (el.style.transition.includes('transform')) el.style.transition = ''
+        }, 180)
+        cleanups.push(() => window.clearTimeout(t))
+      }
+    }
+
+    return () => cleanups.forEach((fn) => fn())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedColumns.map((c) => c.key).join('|')])
 
   useEffect(() => {
     if (!draggingRowId || !dragOrder) return
 
     const onMove = (ev: PointerEvent) => {
       if (dragPointerIdRef.current != null && ev.pointerId !== dragPointerIdRef.current) return
+      setDragPointer({ x: ev.clientX, y: ev.clientY })
+      setDragHasMoved(true)
+
       // Find target index based on pointer Y relative to row midpoints.
       const ids = dragOrder
       const y = ev.clientY
@@ -209,9 +529,10 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
       if (fromIndex === -1) return
       const toIndex = targetIndex
       if (toIndex === fromIndex) return
+      // Capture current positions for smooth slide (FLIP)
+      captureRowTops(ids)
       const nextIds = moveItem(ids, fromIndex, toIndex)
       setDragOrder(nextIds)
-      setDropIndicatorId(nextIds[toIndex] ?? null)
     }
 
     const onUp = async (ev: PointerEvent) => {
@@ -223,7 +544,10 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
 
       setDraggingRowId(null)
       setDragOrder(null)
-      setDropIndicatorId(null)
+      setDragPointer(null)
+      setDragGhostRect(null)
+      dragGhostOffsetRef.current = null
+      setDragHasMoved(false)
       setPendingOrderIds(finalOrder)
 
       const movedRow = rowsById.get(movedId)
@@ -305,6 +629,92 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draggingRowId, dragOrder])
+
+  useEffect(() => {
+    if (!draggingColKey || !colDragOrderKeys) return
+
+    const onMove = (ev: PointerEvent) => {
+      if (colPointerIdRef.current != null && ev.pointerId !== colPointerIdRef.current) return
+      setColDragPointer({ x: ev.clientX, y: ev.clientY })
+      setColDragHasMoved(true)
+
+      const keys = colDragOrderKeys
+      const x = ev.clientX
+      let targetIndex = keys.length - 1
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i]
+        const el = colHeaderRefs.current[k]
+        if (!el) continue
+        const rect = el.getBoundingClientRect()
+        const mid = rect.left + rect.width / 2
+        if (x < mid) {
+          targetIndex = i
+          break
+        }
+      }
+
+      const fromIndex = keys.indexOf(draggingColKey)
+      if (fromIndex === -1) return
+      const toIndex = targetIndex
+      if (toIndex === fromIndex) return
+
+      captureColLefts(keys)
+      const nextKeys = moveItem(keys, fromIndex, toIndex)
+      setColDragOrderKeys(nextKeys)
+    }
+
+    const onUp = async (ev: PointerEvent) => {
+      if (colPointerIdRef.current != null && ev.pointerId !== colPointerIdRef.current) return
+      colPointerIdRef.current = null
+
+      const finalKeys = colDragOrderKeys.slice()
+      const didMove = colDragHasMoved
+
+      setDraggingColKey(null)
+      setColDragPointer(null)
+      setColGhostRect(null)
+      colGhostOffsetRef.current = null
+      setColDragHasMoved(false)
+
+      if (!didMove) return
+
+      const currentKeys = sortedColumns.map((c) => c.key)
+      const same =
+        currentKeys.length === finalKeys.length &&
+        currentKeys.every((k, idx) => k === finalKeys[idx])
+      if (same) return
+
+      // Capture current BODY positions; after we commit the new order, we'll FLIP animate cells into place.
+      captureBodyLeftsForDrop(currentKeys)
+
+      await persistColumnOrder(finalKeys)
+
+      // Keep header order stable until columns prop reflects the change.
+      setColDragOrderKeys(finalKeys)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draggingColKey, colDragOrderKeys, colDragHasMoved])
+
+  // Once the columns prop reflects the committed order, clear the temporary header ordering.
+  useEffect(() => {
+    if (draggingColKey !== null) return
+    if (!colDragOrderKeys) return
+    const currentKeys = sortedColumns.map((c) => c.key)
+    const same =
+      currentKeys.length === colDragOrderKeys.length &&
+      currentKeys.every((k, idx) => k === colDragOrderKeys[idx])
+    if (same) setColDragOrderKeys(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedColumns.map((c) => c.key).join('|'), draggingColKey, colDragOrderKeys])
 
   const getRowTopWithinTable = (rowId: string) => {
     const wrap = tableWrapRef.current
@@ -444,6 +854,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
   const clampWidth = (w: number) => Math.max(MIN_COL_WIDTH, Math.min(MAX_COL_WIDTH, w))
 
   const beginResize = (e: React.PointerEvent, key: string) => {
+    if (isColDragActive) return
     e.preventDefault()
     e.stopPropagation()
 
@@ -720,7 +1131,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded">
+      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive">
         Error loading rows: {error.message || 'Unknown error'}
       </div>
     )
@@ -733,7 +1144,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
         ? (rows as any).error
         : 'Unexpected response. Please refresh the page.'
     return (
-      <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded">
+      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive">
         Error loading rows: {msg}
       </div>
     )
@@ -743,7 +1154,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-16 bg-gray-100 animate-pulse rounded"></div>
+          <div key={i} className="h-16 bg-muted animate-pulse rounded"></div>
         ))}
       </div>
     )
@@ -755,44 +1166,28 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
   if (columns.length === 0) {
     return (
       <>
-        <div className="border border-gray-200 border-x-0 border-t-0 border-b-0 rounded-b-lg rounded-t-none overflow-hidden">
-          <div className="overflow-x-auto">
-            <div className="min-w-max">
-              {/* Header: gutter has NO borders; table header has top+bottom borders; ends at PDF */}
-              <div className="bg-white">
-                <div className="flex">
-                  <div className="flex-shrink-0 w-24 px-3 py-2" />
-
-                  <div className="flex border-t border-gray-200 border-b-2 border-gray-300 pl-3">
-                    <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-gray-200">
-                      <span className="text-sm font-medium text-gray-700">PDF</span>
-                    </div>
-                  </div>
-
-                  {/* Add Column area (borderless) */}
-                  <div className="flex-shrink-0 px-3 py-2">
-                    <button
-                      onClick={() => setIsAddColumnOpen(true)}
-                      className="text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
-                    >
-                      <span>+</span>
-                      <span>Add Column</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-12 text-center text-gray-500">
-                <p>No columns yet. Click "Add Column" to get started.</p>
-              </div>
-            </div>
+        {/* No table chrome/lines until at least one custom column exists */}
+        <div className="pl-[100px] pr-8">
+          <div className="mt-3">
+            <AddColumnButton onClick={() => setIsAddColumnOpen(true)} />
           </div>
+        </div>
+        <div className="mt-10 px-8 text-center text-muted-foreground">
+          <p>No columns yet. Click &quot;Add Column&quot; to get started.</p>
         </div>
         <AddColumnModal
           isOpen={isAddColumnOpen}
           onClose={() => setIsAddColumnOpen(false)}
           onAdd={handleAddColumn}
           existingKeys={existingKeys}
+        />
+        <EditColumnModal
+          isOpen={editColumn !== null}
+          column={editColumn}
+          onClose={() => setEditColumn(null)}
+          onSave={(next) => {
+            if (editColumn) void saveColumn(editColumn.key, next)
+          }}
         />
         <ConfirmDialog
           open={confirmDeleteColumnKey !== null}
@@ -814,27 +1209,39 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
   if (rowsList.length === 0) {
     return (
       <>
-        <div className="border border-gray-200 border-x-0 border-t-0 border-b-0 rounded-b-lg rounded-t-none overflow-hidden">
+        <div className="border border-border border-x-0 border-t-0 border-b-0 rounded-b-lg rounded-t-none overflow-hidden">
           <div className="overflow-x-auto">
             <div className="min-w-max">
               {/* Header: matches main table shell */}
-              <div className="bg-white">
+              <div className="bg-background">
                 <div className="flex">
                   <div className="flex-shrink-0 w-24 px-3 py-2" />
 
-                  <div className="flex border-t border-gray-200 border-b-2 border-gray-300 pl-3">
-                    {sortedColumns.map((column) => (
+                  <div className="flex border-t border-border border-b-2 border-border pl-3">
+                    {headerColumns.map((column) => (
                       <div
                         key={column.key}
-                        className="flex-shrink-0 px-3 py-2 border-r border-gray-200 relative group/colhead cell-hover-fade"
+                        ref={(el) => {
+                          colHeaderRefs.current[column.key] = el
+                        }}
+                        className={[
+                          'flex-shrink-0 px-3 py-2 border-r border-border relative group/colhead cell-hover-fade transition-colors hover:bg-muted/30',
+                          draggingColKey === column.key
+                            ? colDragHasMoved
+                              ? 'opacity-0 pointer-events-none select-none'
+                              : 'opacity-60'
+                            : '',
+                        ].join(' ')}
                         style={{
                           ['--fade-cutoff' as any]: '52px',
                           width: `${columnWidths[column.key] ?? DEFAULT_COL_WIDTH}px`,
+                          cursor: draggingColKey === column.key ? 'grabbing' : 'default',
                         }}
+                        onPointerDown={(e) => beginColumnDrag(column.key, e)}
                       >
                         <div className="relative w-full">
                           <div
-                            className="cell-text text-sm font-semibold text-gray-900 truncate pr-10"
+                            className="cell-text text-sm font-semibold text-foreground truncate pr-10"
                             style={{ lineHeight: '1.5rem', padding: 0, margin: 0 }}
                           >
                             {column.label}
@@ -844,7 +1251,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                             <button
                               type="button"
                               onClick={() => openEditColumn(column)}
-                              className="p-0.5 text-gray-400 hover:text-gray-600 rounded"
+                              className="p-0.5 text-muted-foreground hover:text-foreground rounded"
                               title="Edit column"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -854,7 +1261,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteColumnKey(column.key)}
-                              className="p-0.5 text-gray-400 hover:text-red-600 rounded"
+                              className="p-0.5 text-muted-foreground hover:text-destructive rounded"
                               title="Delete column"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -867,35 +1274,30 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                         {/* resize handle */}
                         <div
                           className="absolute top-0 right-[-3px] h-full w-[8px] cursor-col-resize"
+                          data-resize-handle="true"
                           style={{ touchAction: 'none' }}
                           onPointerDown={(e) => beginResize(e, column.key)}
                           title="Resize column"
                         >
-                          <div className="absolute inset-y-0 left-1/2 w-px bg-transparent group-hover/colhead:bg-gray-300" />
+                          <div className="absolute inset-y-0 left-1/2 w-px bg-transparent group-hover/colhead:bg-border" />
                         </div>
                       </div>
                     ))}
-                    <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-gray-200">
-                      <span className="text-sm font-medium text-gray-700">PDF</span>
+                    <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-border">
+                      <span className="text-sm font-medium text-foreground">PDF</span>
                     </div>
                   </div>
 
                   {/* Add Column area (borderless) */}
                   <div className="flex-shrink-0 px-3 py-2">
-                    <button
-                      onClick={() => setIsAddColumnOpen(true)}
-                      className="text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
-                    >
-                      <span>+</span>
-                      <span>Add Column</span>
-                    </button>
+                    <AddColumnButton onClick={() => setIsAddColumnOpen(true)} />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white p-12 text-center text-gray-500">
-        <p>No rows yet. Upload a PDF to create your first row.</p>
-      </div>
+              <div className="bg-background p-12 text-center text-muted-foreground">
+                <p>No rows yet. Upload a PDF to create your first row.</p>
+              </div>
             </div>
           </div>
         </div>
@@ -904,6 +1306,14 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
           onClose={() => setIsAddColumnOpen(false)}
           onAdd={handleAddColumn}
           existingKeys={existingKeys}
+        />
+        <EditColumnModal
+          isOpen={editColumn !== null}
+          column={editColumn}
+          onClose={() => setEditColumn(null)}
+          onSave={(next) => {
+            if (editColumn) void saveColumn(editColumn.key, next)
+          }}
         />
         <ConfirmDialog
           open={confirmDeleteColumnKey !== null}
@@ -924,31 +1334,110 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
 
   return (
     <>
+      {/* Floating drag ghost (visual only) */}
+      {ghostRow && dragGhostRect && dragPointer && dragGhostOffsetRef.current && (
+        <div
+          className="pointer-events-none fixed z-[100] rounded-lg border border-border bg-card/80 text-card-foreground shadow-lg backdrop-blur-md"
+          style={{
+            left: dragGhostRect.left,
+            top: dragPointer.y - dragGhostOffsetRef.current.y,
+            width: dragGhostRect.width,
+            height: dragGhostRect.height,
+            opacity: 0.7,
+            transform: 'translateZ(0)',
+          }}
+        >
+          {/* Simple read-only preview of the row */}
+          <div className="flex h-full">
+            <div className="flex-shrink-0 w-24 px-3 flex items-center" />
+            <div className="flex pl-3 flex-1">
+              {bodyColumns.map((column) => {
+                const value = ghostRow.data?.[column.key] ?? null
+                const displayValue = value === null || value === '' ? '—' : String(value)
+                return (
+                  <div
+                    key={column.key}
+                    className="flex-shrink-0 px-3 py-2 border-r border-border"
+                    style={{
+                      width: `${columnWidths[column.key] ?? DEFAULT_COL_WIDTH}px`,
+                    }}
+                  >
+                    <div className="text-sm text-foreground truncate" style={{ lineHeight: '1.5rem' }}>
+                      {displayValue}
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-border flex items-center">
+                <div className="scale-[0.92] origin-left">
+                  <PdfThumbnailCell
+                    thumbnailUrl={ghostRow.thumbnail_url}
+                    pdfUrl={ghostRow.pdf_url}
+                    filename={`row-${ghostRow.id}.pdf`}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating column ghost (visual only) */}
+      {ghostColumn && colGhostRect && colDragPointer && colGhostOffsetRef.current && (
+        <div
+          className="pointer-events-none fixed z-[110] rounded-md border border-border bg-card/80 text-card-foreground shadow-lg backdrop-blur-md"
+          style={{
+            left: colDragPointer.x - colGhostOffsetRef.current.x,
+            top: colGhostRect.top,
+            width: colGhostRect.width,
+            height: colGhostRect.height,
+            opacity: 0.75,
+            transform: 'translateZ(0)',
+          }}
+        >
+          <div className="h-full px-3 py-2 flex items-center">
+            <div className="text-sm font-semibold text-foreground truncate">{ghostColumn.label}</div>
+          </div>
+        </div>
+      )}
+
       <div ref={tableWrapRef} className="relative">
         {/* Remove left/right outer borders (only top/bottom border) */}
-        <div className="border border-gray-200 border-x-0 border-t-0 border-b-0 rounded-b-lg rounded-t-none overflow-hidden">
+        <div className="border border-border border-x-0 border-t-0 border-b-0 rounded-b-lg rounded-t-none overflow-hidden">
     <div className="overflow-x-auto">
             <div className="min-w-max">
               {/* Header: gutter has NO borders; table header has top+bottom borders */}
-              <div className="bg-white">
+              <div className="bg-background">
                 <div className="flex">
                   {/* Invisible gutter column for row controls (keeps hover area inside table) */}
                   <div className="flex-shrink-0 w-24 px-3 py-2" />
 
                   {/* Header content (adds spacing before first column + draws borders). ENDS at PDF. */}
-                  <div className="flex border-t border-gray-200 border-b-2 border-gray-300 pl-3">
-            {sortedColumns.map((column) => (
+                  <div className="flex border-t border-border border-b-2 border-border pl-3">
+            {headerColumns.map((column) => (
                       <div
                 key={column.key}
-                        className="flex-shrink-0 px-3 py-2 border-r border-gray-200 relative group/colhead cell-hover-fade"
+                        ref={(el) => {
+                          colHeaderRefs.current[column.key] = el
+                        }}
+                        className={[
+                          'flex-shrink-0 px-3 py-2 border-r border-border relative group/colhead cell-hover-fade transition-colors hover:bg-muted/30',
+                          draggingColKey === column.key
+                            ? colDragHasMoved
+                              ? 'opacity-0 pointer-events-none select-none'
+                              : 'opacity-60'
+                            : '',
+                        ].join(' ')}
                         style={{
                           ['--fade-cutoff' as any]: '52px',
                           width: `${columnWidths[column.key] ?? DEFAULT_COL_WIDTH}px`,
+                          cursor: draggingColKey === column.key ? 'grabbing' : 'default',
                         }}
+                        onPointerDown={(e) => beginColumnDrag(column.key, e)}
                       >
                         <div className="relative w-full">
                           <div
-                            className="cell-text text-sm font-semibold text-gray-900 truncate pr-10"
+                            className="cell-text text-sm font-semibold text-foreground truncate pr-10"
                             style={{ lineHeight: '1.5rem', padding: 0, margin: 0 }}
               >
                 {column.label}
@@ -958,7 +1447,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                             <button
                               type="button"
                               onClick={() => openEditColumn(column)}
-                              className="p-0.5 text-gray-400 hover:text-gray-600 rounded"
+                              className="p-0.5 text-muted-foreground hover:text-foreground rounded"
                               title="Edit column"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -968,7 +1457,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteColumnKey(column.key)}
-                              className="p-0.5 text-gray-400 hover:text-red-600 rounded"
+                              className="p-0.5 text-muted-foreground hover:text-destructive rounded"
                               title="Delete column"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -981,46 +1470,41 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                         {/* resize handle */}
                         <div
                           className="absolute top-0 right-[-3px] h-full w-[8px] cursor-col-resize"
+                          data-resize-handle="true"
                           style={{ touchAction: 'none' }}
                           onPointerDown={(e) => beginResize(e, column.key)}
                           title="Resize column"
                         >
-                          <div className="absolute inset-y-0 left-1/2 w-px bg-transparent group-hover/colhead:bg-gray-300" />
+                          <div className="absolute inset-y-0 left-1/2 w-px bg-transparent group-hover/colhead:bg-border" />
                         </div>
                       </div>
                     ))}
-                    <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-gray-200">
-                      <span className="text-sm font-medium text-gray-700">PDF</span>
+                    <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-border">
+                      <span className="text-sm font-medium text-foreground">PDF</span>
                     </div>
                   </div>
 
                   {/* Add Column "column" (intentionally borderless; no top/bottom borders) */}
                   <div className="flex-shrink-0 px-3 py-2">
-                    <button
-                      onClick={() => setIsAddColumnOpen(true)}
-                      className="text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
-                    >
-                      <span>+</span>
-                      <span>Add Column</span>
-                    </button>
+                    <AddColumnButton onClick={() => setIsAddColumnOpen(true)} />
                   </div>
                 </div>
               </div>
-              <div ref={rowsContainerRef} className="relative bg-white">
+              <div ref={rowsContainerRef} className="relative bg-background">
             {/* Selection toolbar (appears when rows selected) */}
             {selectionMode && selectionBarTop !== null && (
               <div
                     className="absolute left-3 z-20"
                 style={{ top: selectionBarTop }}
               >
-                <div className="flex items-center gap-3 bg-white border border-gray-200 shadow-sm rounded-md px-3 py-2">
-                  <span className="text-sm text-gray-700 font-medium">
+                <div className="flex items-center gap-3 bg-card border border-border shadow-sm rounded-md px-3 py-2">
+                  <span className="text-sm text-foreground font-medium">
                     {selectedRowIds.size} selected
                   </span>
                   <button
                     type="button"
                     onClick={() => setConfirmDeleteRowsOpen(true)}
-                        className="p-1 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors rounded"
+                    className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors rounded"
                     title="Delete selected"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1030,7 +1514,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                   <button
                     type="button"
                     onClick={clearSelection}
-                    className="text-sm text-gray-500 hover:text-gray-700"
+                    className="text-sm text-muted-foreground hover:text-foreground"
                   >
                     Clear
                   </button>
@@ -1046,18 +1530,16 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                   ref={(el) => {
                     rowRefs.current[row.id] = el
                   }}
-                  className={`group/row flex relative transition-[transform,box-shadow,background-color] duration-200 ease-in-out ${
-                    isSelected ? 'bg-blue-50' : 'bg-white'
-                  } ${draggingRowId === row.id ? 'shadow-xl ring-2 ring-blue-300 bg-white' : ''}`}
-                  style={{
-                    transform:
-                      draggingRowId === row.id
-                        ? 'scale(1.02) translateZ(0) rotate(-0.2deg)'
-                        : 'translateZ(0)',
-                    opacity: draggingRowId === row.id ? 0.8 : 1,
-                    willChange: draggingRowId ? 'transform, box-shadow' : undefined,
-                    cursor: draggingRowId === row.id ? 'grabbing' : draggingRowId ? 'grabbing' : undefined,
-                  }}
+                  className={[
+                    'group/row flex relative transition-colors duration-150 ease-out',
+                    isSelected ? 'bg-primary/10' : 'bg-background',
+                    // While dragging, the dragged row becomes an invisible placeholder gap.
+                    draggingRowId === row.id
+                      ? dragHasMoved
+                        ? 'opacity-0 pointer-events-none select-none'
+                        : 'opacity-50'
+                      : '',
+                  ].join(' ')}
                 >
                       {/* Invisible gutter column (row controls live here; not a real data column) */}
                       <div className="flex-shrink-0 w-24 px-3 flex items-center">
@@ -1075,8 +1557,8 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                             <button
                               type="button"
                               onPointerDown={(e) => beginRowDrag(row.id, e)}
-                              className={`text-gray-300 select-none ${
-                                isDragActive ? 'opacity-80' : 'hover:text-gray-400'
+                              className={`text-muted-foreground/50 select-none ${
+                                isDragActive ? 'opacity-80' : 'hover:text-muted-foreground'
                               }`}
                               title="Drag to reorder"
                               style={{
@@ -1096,7 +1578,13 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                             title="Select row"
                             className={isDragActive ? 'pointer-events-none opacity-60' : ''}
                           >
-                            <div className={`w-4 h-4 rounded border ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'} flex items-center justify-center`}>
+                            <div
+                              className={`w-4 h-4 rounded border ring-1 ring-inset ${
+                                isSelected
+                                  ? 'bg-primary border-primary ring-primary/30 shadow-sm'
+                                  : 'border-foreground/25 bg-card/60 ring-border/60 hover:bg-card'
+                              } flex items-center justify-center transition-colors`}
+                            >
                               {isSelected && (
                                 <svg className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor">
                                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8.5 8.5a1 1 0 01-1.414 0l-3.5-3.5a1 1 0 011.414-1.414L7.5 13.086l7.793-7.793a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -1109,8 +1597,8 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteSingleRowId(row.id)}
-                              className={`p-1 -ml-1 text-gray-400 transition-colors rounded ${
-                                isDragActive ? 'opacity-50 pointer-events-none' : 'hover:text-red-600 hover:bg-red-50'
+                              className={`p-1 -ml-1 text-muted-foreground transition-colors rounded ${
+                                isDragActive ? 'opacity-50 pointer-events-none' : 'hover:text-destructive hover:bg-destructive/10'
                               }`}
                               title="Delete row"
                             >
@@ -1123,13 +1611,8 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                       </div>
 
                       {/* Row separators: only on the "real table" area, not under the gutter */}
-                      <div
-                        className={`flex pl-3 ${rowIdx === 0 ? '' : 'border-t border-gray-200'}`}
-                      >
-                        {dropIndicatorId === row.id && draggingRowId !== row.id && (
-                          <div className="absolute left-2 right-2 -top-[8px] h-2 rounded-full bg-gradient-to-r from-blue-400 via-blue-500 to-blue-400 shadow-md pointer-events-none" />
-                        )}
-                {sortedColumns.map((column) => {
+                      <div className={`flex pl-3 ${rowIdx === 0 ? '' : 'border-t border-border'}`}>
+                {bodyColumns.map((column) => {
                   const value = row.data[column.key] ?? null
                   const displayValue = value === null || value === '' ? '—' : String(value)
                     const isEditing = editingCell?.rowId === row.id && editingCell?.columnKey === column.key
@@ -1137,7 +1620,11 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                   return (
                       <div
                         key={column.key}
-                        className={`flex-shrink-0 px-3 py-2 border-r border-gray-200 relative group/cell ${
+                        ref={(el) => {
+                          if (!colCellRefs.current[row.id]) colCellRefs.current[row.id] = {}
+                          colCellRefs.current[row.id][column.key] = el
+                        }}
+                        className={`flex-shrink-0 px-3 py-2 border-r border-border relative group/cell ${
                           isDragActive ? '' : 'cell-hover-fade'
                         }`}
                         style={{
@@ -1176,7 +1663,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                       ) : (
                           <div className="relative w-full">
                             <div
-                              className="cell-text text-sm text-gray-900 pr-6 min-h-[1.5rem] overflow-x-auto scrollbar-hide whitespace-pre-wrap break-words"
+                              className="cell-text text-sm text-foreground pr-6 min-h-[1.5rem] overflow-x-auto scrollbar-hide whitespace-pre-wrap break-words"
                               style={{ lineHeight: '1.5rem', padding: 0, margin: 0 }}
                         >
                               {displayValue}
@@ -1184,8 +1671,8 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                         <button
                               onClick={() => startEditingCell(row.id, column.key, value)}
                               className={`absolute top-[2px] right-0 p-0.5 opacity-0 ${
-                                isDragActive ? '' : 'group-hover/cell:opacity-100 hover:text-gray-600'
-                              } text-gray-400 transition-opacity flex-shrink-0 z-10 bg-white rounded ${
+                                isDragActive ? '' : 'group-hover/cell:opacity-100 hover:text-foreground'
+                              } text-muted-foreground transition-opacity flex-shrink-0 z-10 bg-background rounded ${
                                 isDragActive ? 'pointer-events-none' : ''
                               }`}
                               title="Edit cell"
@@ -1199,7 +1686,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                   </div>
                     )
                   })}
-                  <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-gray-200 flex items-center">
+                  <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-border flex items-center">
                   <PdfThumbnailCell
                     thumbnailUrl={row.thumbnail_url}
                     pdfUrl={row.pdf_url}

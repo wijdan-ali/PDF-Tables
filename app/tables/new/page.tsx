@@ -2,6 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+
+const TABLE_CREATED_EVENT = 'pdf-tables:table-created'
 
 export default function CreateTablePage() {
   const router = useRouter()
@@ -36,6 +42,9 @@ export default function CreateTablePage() {
       }
 
       const data = await response.json()
+      // Tell the Sidebar (client component living in the /tables layout) to immediately
+      // add this table without requiring a full page reload.
+      window.dispatchEvent(new CustomEvent(TABLE_CREATED_EVENT, { detail: { table: data.table } }))
       router.push(`/tables/${data.table.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create table')
@@ -45,50 +54,42 @@ export default function CreateTablePage() {
 
   return (
     <div className="p-8 max-w-2xl">
-      <h1 className="text-3xl font-semibold text-gray-900 mb-8">Create New Table</h1>
+      <h1 className="text-3xl font-semibold text-foreground mb-8">Create New Table</h1>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded mb-4">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive mb-4">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label htmlFor="tableName" className="block text-sm font-medium text-gray-700 mb-2">
-            Table Name
-          </label>
-          <input
-            id="tableName"
-            type="text"
-            value={tableName}
-            onChange={(e) => setTableName(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-            placeholder="e.g., Monthly Invoices"
-            required
-          />
-            <p className="mt-2 text-sm text-gray-500">
-              You can add columns after creating the table.
-            </p>
-        </div>
-
-        <div className="flex gap-4">
-          <button
-            type="submit"
-            disabled={isSubmitting}
-              className="px-6 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? 'Creating...' : 'Create Table'}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.back()}
-              className="px-6 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+      <Card className="shadow-sm">
+        <form onSubmit={handleSubmit}>
+          <CardHeader>
+            <CardTitle>Table details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="tableName">Table Name</Label>
+              <Input
+                id="tableName"
+                value={tableName}
+                onChange={(e) => setTableName(e.target.value)}
+                placeholder="e.g., Monthly Invoices"
+                required
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">You can add columns after creating the table.</p>
+          </CardContent>
+          <CardFooter className="flex gap-3">
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Creating...' : 'Create Table'}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Cancel
+            </Button>
+          </CardFooter>
+        </form>
+      </Card>
     </div>
   )
 }

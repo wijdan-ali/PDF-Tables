@@ -3,7 +3,7 @@
 This folder is for **self-hosted** font files.
 
 ### Junicode (Regular + Bold)
-Junicode is bundled locally under `public/fonts/junicode/` (from the official release zip) and wired via `@font-face` in `app/globals.css`.
+Removed. The app now uses JetBrains Mono for all typography.
 
 ### SF Pro Display (Regular + Medium + Bold)
 SF Pro Display is **Apple proprietary**. We can't legally download/commit it for you.

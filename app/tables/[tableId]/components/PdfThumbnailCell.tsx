@@ -233,11 +233,11 @@ export default function PdfThumbnailCell({
     return (
       <div
         onClick={handleClick}
-        className="w-24 h-24 flex items-center justify-center bg-gray-100 border border-gray-200 rounded cursor-pointer hover:bg-gray-200 transition-colors"
+        className="w-24 h-24 flex items-center justify-center bg-muted border border-border rounded cursor-pointer hover:bg-accent transition-colors"
         title={filename}
       >
         <svg
-          className="w-8 h-8 text-gray-400"
+          className="w-8 h-8 text-muted-foreground"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -256,12 +256,12 @@ export default function PdfThumbnailCell({
   return (
     <div
       onClick={handleClick}
-      className="w-24 h-24 relative border border-gray-200 rounded overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+      className="w-24 h-24 relative border border-border rounded overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
       title={filename}
     >
       {isLoading && (
-        <div className="absolute inset-0 bg-gray-100 animate-pulse flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+        <div className="absolute inset-0 bg-muted animate-pulse flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-border border-t-primary rounded-full animate-spin"></div>
         </div>
       )}
       <img

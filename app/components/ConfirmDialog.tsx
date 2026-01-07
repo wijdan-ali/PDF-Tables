@@ -1,5 +1,8 @@
 'use client'
 
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+
 interface ConfirmDialogProps {
   open: boolean
   title: string
@@ -27,38 +30,31 @@ export default function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
       onMouseDown={onCancel}
     >
-      <div
-        className="w-full max-w-md rounded-lg bg-white shadow-xl p-6"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-        {description && <p className="mt-2 text-sm text-gray-600">{description}</p>}
-
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isLoading}
-            className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
-          >
-            {cancelText}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isLoading}
-            className={
-              destructive
-                ? 'px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50'
-                : 'px-4 py-2 text-sm bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors disabled:opacity-50'
-            }
-          >
-            {isLoading ? 'Working…' : confirmText}
-          </button>
-        </div>
+      <div onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-md px-4">
+        <Card className="shadow-xl">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">{title}</CardTitle>
+          </CardHeader>
+          {(description || '').length > 0 && (
+            <CardContent className="pt-0 text-sm text-muted-foreground">{description}</CardContent>
+          )}
+          <CardFooter className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={isLoading}>
+              {cancelText}
+            </Button>
+            <Button
+              type="button"
+              variant={destructive ? 'destructive' : 'default'}
+              onClick={onConfirm}
+              disabled={isLoading}
+            >
+              {isLoading ? 'Working…' : confirmText}
+            </Button>
+          </CardFooter>
+        </Card>
       </div>
     </div>
   )
