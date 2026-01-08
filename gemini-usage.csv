@@ -1,0 +1,2 @@
+ts,model,table_id,row_id,prompt_tokens,candidates_tokens,cached_tokens,thoughts_tokens,total_tokens
+2026-01-07T21:56:07.749Z,gemini-2.5-flash,6b9db538-118f-4930-b7b0-c9fe34c09878,df13ba24-ae9c-4663-9985-31698f1cc4d3,1233,54,,660,1947

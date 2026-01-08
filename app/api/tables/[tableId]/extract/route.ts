@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { extractFromPDF } from '@/lib/chatpdf/client'
+import { extractFromPDFGemini } from '@/lib/gemini/client'
 import { buildExtractionPrompt } from '@/lib/chatpdf/prompt-builder'
 import { sanitizeAndParseJSON, truncateForStorage } from '@/lib/chatpdf/sanitizer'
 import { validateAndNormalize } from '@/lib/chatpdf/validator'
 import type { ExtractResponse } from '@/types/api'
+
+export const runtime = 'nodejs'
 
 interface RouteContext {
   params: {
@@ -38,7 +41,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     const body = await request.json()
-    const { row_id } = body
+    const { row_id, provider } = body as { row_id?: string; provider?: 'chatpdf' | 'gemini' | string }
+    const selectedProvider = provider === 'gemini' ? 'gemini' : 'chatpdf'
 
     if (!row_id) {
       return NextResponse.json(
@@ -141,9 +145,18 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     let extractedData: Record<string, any>
 
     try {
-      // Call ChatPDF API
-      const chatPDFResult = await extractFromPDF(signedUrlData.signedUrl, prompt)
-      rawResponse = chatPDFResult.content
+      if (selectedProvider === 'gemini') {
+        const geminiResult = await extractFromPDFGemini(signedUrlData.signedUrl, prompt, {
+          displayName: `table-${params.tableId}-row-${row_id}`,
+          tableId: params.tableId,
+          rowId: row_id,
+        })
+        rawResponse = geminiResult.content
+      } else {
+        // Call ChatPDF API
+        const chatPDFResult = await extractFromPDF(signedUrlData.signedUrl, prompt)
+        rawResponse = chatPDFResult.content
+      }
 
       // Sanitize and parse JSON
       const sanitizeResult = sanitizeAndParseJSON(rawResponse)

@@ -7,8 +7,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useRef } from 'react'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { Plus } from 'lucide-react'
+import { MoreHorizontal, Plus } from 'lucide-react'
 import { PanelLeftClose } from 'lucide-react'
+import ConfirmDialog from '@/app/components/ConfirmDialog'
 
 interface Table {
   id: string
@@ -25,6 +26,8 @@ const TABLE_NAME_UPDATED_EVENT = 'pdf-tables:table-name-updated'
 const TABLE_TOUCHED_EVENT = 'pdf-tables:table-touched'
 const TABLE_CREATED_EVENT = 'pdf-tables:table-created'
 const SIDEBAR_TABLES_CACHE_KEY = 'pdf-tables:sidebar-tables-cache'
+const AI_PROVIDER_STORAGE_KEY = 'pdf-tables:ai-provider'
+type AiProvider = 'chatpdf' | 'gemini'
 
 // Tune these to control the extra grain layer (separate from Silk's noiseIntensity).
 const SIDEBAR_GRAIN_OPACITY = 1.0
@@ -56,8 +59,64 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
   const [loading, setLoading] = useState<boolean>(() =>
     typeof window === 'undefined' ? true : readTablesCache().length === 0
   )
+  const [aiProvider, setAiProvider] = useState<AiProvider>(() => {
+    if (typeof window === 'undefined') return 'chatpdf'
+    try {
+      const raw = localStorage.getItem(AI_PROVIDER_STORAGE_KEY)
+      return raw === 'gemini' ? 'gemini' : 'chatpdf'
+    } catch {
+      return 'chatpdf'
+    }
+  })
+  const [openMenu, setOpenMenu] = useState<{ tableId: string; left: number; top: number } | null>(null)
+  const [confirmDeleteTableId, setConfirmDeleteTableId] = useState<string | null>(null)
+  const [isDeletingTable, setIsDeletingTable] = useState(false)
   const shellRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(AI_PROVIDER_STORAGE_KEY, aiProvider)
+    } catch {
+      // ignore
+    }
+  }, [aiProvider])
+
+  useEffect(() => {
+    if (!openMenu) return
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('[data-table-menu-root="true"]')) return
+      if (target.closest('[data-table-menu-button="true"]')) return
+      setOpenMenu(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [openMenu])
+
+  const deleteTable = async (tableId: string) => {
+    if (isDeletingTable) return
+    setIsDeletingTable(true)
+    try {
+      const res = await fetch(`/api/tables/${tableId}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || 'Failed to delete table')
+
+      setTables((prev) => prev.filter((t) => t.id !== tableId))
+      setOpenMenu(null)
+      setConfirmDeleteTableId(null)
+
+      // If the user is currently viewing the deleted table, take them back to /tables.
+      if (pathname === `/tables/${tableId}`) {
+        router.push('/tables')
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to delete table')
+    } finally {
+      setIsDeletingTable(false)
+    }
+  }
 
   useEffect(() => {
     const fetchTables = async () => {
@@ -190,7 +249,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
           if (!el) return
           el.style.setProperty('--spot-o', '0')
         }}
-        className="relative h-full overflow-hidden rounded-tr-[28px] rounded-br-[28px] bg-sidebar text-sidebar-foreground"
+        className="sidebar-shell relative h-full overflow-hidden rounded-tr-[28px] rounded-br-[28px] bg-sidebar text-sidebar-foreground"
       >
         {/* Background */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-tr-[28px] rounded-br-[28px]">
@@ -234,7 +293,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
                 href="/tables"
                 className="font-serif text-[25px] leading-none font-normal tracking-tight text-sidebar-foreground/95 hover:text-sidebar-foreground transition-colors"
               >
-                PDF Tables
+                Clariparse
               </Link>
               <div className="flex items-center gap-2">
                 <ThemeToggle className="px-2 py-1.5" />
@@ -267,12 +326,13 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
             </Link>
           </div>
 
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             <div className="px-1 pb-2 text-[13px] font-semibold tracking-[0.18em] text-sidebar-foreground/60">
               TABLES
             </div>
 
-            <div className="h-full overflow-y-auto pr-1">
+            <div className="relative flex-1 min-h-0">
+              <div className="sidebar-scroll sidebar-scroll-fade h-full overflow-y-auto pr-1 pb-6">
               {/* Only show Loading when we truly have no cached tables */}
               {loading && tables.length === 0 ? (
                 <div className="px-2 py-2 text-sm text-sidebar-foreground/70">Loading...</div>
@@ -282,28 +342,135 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
                 <div className="space-y-1.5">
                   {tables.map((table) => {
                     const isActive = pathname === `/tables/${table.id}`
+                    const isMenuOpen = openMenu?.tableId === table.id
                     return (
-                      <Link
+                      <div
                         key={table.id}
-                        href={`/tables/${table.id}`}
                         className={[
-                          'block rounded-xl px-4 py-2.5 text-[15px] leading-snug transition-[background-color,border-color,transform,box-shadow,color] duration-200 ease-out',
-                          'border border-transparent text-sidebar-foreground/85',
+                          'group/table relative rounded-xl border transition-[background-color,border-color,box-shadow,color] duration-200 ease-out',
                           isActive
                             ? 'bg-sidebar-primary/10 border-sidebar-primary/25 text-sidebar-foreground shadow-[inset_0_1px_0_color-mix(in_oklch,var(--sidebar-foreground)_12%,transparent)] dark:bg-sidebar-primary/20 dark:border-sidebar-primary/35 dark:shadow-[inset_0_1px_0_color-mix(in_oklch,var(--sidebar-primary-foreground)_16%,transparent)]'
-                            : 'hover:bg-sidebar-accent/70 hover:text-sidebar-foreground hover:border-sidebar-border/80 hover:shadow-sm dark:hover:bg-sidebar-accent/55 dark:hover:border-sidebar-foreground/20',
+                            : isMenuOpen
+                              ? 'bg-sidebar-accent/70 border-sidebar-border/80 text-sidebar-foreground shadow-sm dark:bg-sidebar-accent/55 dark:border-sidebar-foreground/20'
+                              : 'border-transparent text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground hover:border-sidebar-border/80 hover:shadow-sm dark:hover:bg-sidebar-accent/55 dark:hover:border-sidebar-foreground/20',
                         ].join(' ')}
                       >
-                        {table.table_name}
-                      </Link>
+                        <Link href={`/tables/${table.id}`} className="block px-4 py-2.5 pr-10 text-[15px] leading-snug">
+                          {table.table_name}
+                        </Link>
+
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                          <button
+                            type="button"
+                            aria-label="Table actions"
+                            data-table-menu-button="true"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
+                              const menuW = 176 // w-44
+                              const pad = 10
+                              const maxLeft = Math.max(pad, window.innerWidth - menuW - pad)
+                              const left = Math.min(maxLeft, Math.max(pad, rect.right - menuW))
+                              const top = rect.bottom + 8
+                              setOpenMenu((prev) => (prev?.tableId === table.id ? null : { tableId: table.id, left, top }))
+                            }}
+                            className={[
+                              'inline-flex h-8 w-8 items-center justify-center rounded-lg',
+                              'opacity-0 group-hover/table:opacity-100 transition-opacity',
+                              'text-sidebar-foreground/55 hover:text-sidebar-foreground/80',
+                            ].join(' ')}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
                     )
                   })}
                 </div>
               )}
+              </div>
+            </div>
+          </div>
+
+          {/* Provider toggle (bottom) */}
+          <div className="relative z-20 -mx-5 px-5 pt-5 bg-transparent">
+            <div className="h-px w-full bg-gradient-to-r from-transparent from-[0.1px] via-sidebar-foreground/20 to-transparent to-[calc(100%-0.1px)]" />
+            <div className="mt-4">
+              <div className="px-1 pb-2 text-[12px] font-semibold tracking-[0.18em] text-sidebar-foreground/60">
+                MODEL
+              </div>
+              <div className="inline-flex w-full rounded-xl border border-border bg-card/70 p-1 shadow-sm backdrop-blur-md">
+                <button
+                  type="button"
+                  onClick={() => setAiProvider('chatpdf')}
+                  className={[
+                    'flex-1 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
+                    aiProvider === 'chatpdf'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-foreground/80 hover:bg-muted/40',
+                  ].join(' ')}
+                  aria-pressed={aiProvider === 'chatpdf'}
+                >
+                  ChatPDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiProvider('gemini')}
+                  className={[
+                    'flex-1 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
+                    aiProvider === 'gemini'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-foreground/80 hover:bg-muted/40',
+                  ].join(' ')}
+                  aria-pressed={aiProvider === 'gemini'}
+                >
+                  Gemini
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {openMenu && (
+        <div
+          data-table-menu-root="true"
+          className="fixed z-[100] w-44 rounded-xl border border-border bg-card shadow-lg backdrop-blur-md overflow-hidden"
+          style={{ left: openMenu.left, top: openMenu.top }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setConfirmDeleteTableId(openMenu.tableId)
+              setOpenMenu(null)
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+          >
+            Delete table…
+          </button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmDeleteTableId !== null}
+        title="Delete table permanently?"
+        description="This will permanently delete the table, all extracted rows, and all uploaded PDFs for this table. This cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        destructive
+        isLoading={isDeletingTable}
+        onCancel={() => {
+          if (isDeletingTable) return
+          setConfirmDeleteTableId(null)
+        }}
+        onConfirm={() => {
+          if (!confirmDeleteTableId) return
+          void deleteTable(confirmDeleteTableId)
+        }}
+      />
     </aside>
   )
 }

@@ -222,10 +222,18 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
         })
       )
 
+      let provider: 'chatpdf' | 'gemini' = 'chatpdf'
+      try {
+        const raw = localStorage.getItem('pdf-tables:ai-provider')
+        provider = raw === 'gemini' ? 'gemini' : 'chatpdf'
+      } catch {
+        provider = 'chatpdf'
+      }
+
       const response = await fetch(`/api/tables/${tableId}/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ row_id: targetRowId }),
+        body: JSON.stringify({ row_id: targetRowId, provider }),
       })
 
       if (!response.ok) {

@@ -84,6 +84,32 @@ body {
   display: none;  /* Chrome, Safari and Opera */
 }
 
+/* Sidebar: hide scrollbars until the sidebar is hovered */
+.sidebar-scroll {
+  scrollbar-width: none; /* Firefox */
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.sidebar-shell:hover .sidebar-scroll {
+  scrollbar-width: thin;
+}
+.sidebar-shell:hover .sidebar-scroll::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+/* Sidebar: fade the bottom of the scroll area without adding a dark overlay (prevents "black band"). */
+.sidebar-scroll-fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 44px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 44px), transparent 100%);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
 /* Fade text near the right edge on hover (used to avoid overlapping action icons) */
 .cell-hover-fade:hover .cell-text {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--fade-cutoff, 100px)), transparent);
