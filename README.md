@@ -40,8 +40,12 @@ A Next.js application that allows users to extract structured data from PDFs usi
    - Fill in your Supabase and ChatPDF credentials:
      ```
      NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-     NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-     SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+     # Prefer Supabase "Publishable API key" (sb_publishable_...) on hosted platform
+     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+
+     # Server-side only: Supabase "Secret API key" (sb_secret_...)
+     SUPABASE_SECRET_KEY=sb_secret_...
+
      CHATPDF_API_KEY=your_chatpdf_api_key
      ```
 

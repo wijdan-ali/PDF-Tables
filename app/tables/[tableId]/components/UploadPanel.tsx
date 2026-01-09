@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { useSWRConfig } from 'swr'
 import type { UploadResponse, ExtractResponse } from '@/types/api'
 import type { ExtractedRow } from '@/types/api'
+import { createClient } from '@/lib/supabase/client'
 
 // Separate grain overlay (independent from Silk noise). Tweak freely.
 const UPLOAD_GRAIN_OPACITY = 0.55
@@ -230,18 +231,17 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
         provider = 'chatpdf'
       }
 
-      const response = await fetch(`/api/tables/${tableId}/extract`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ row_id: targetRowId, provider }),
-      })
+      const supabase = createClient()
+      const { data: extractData, error: invokeError } = await supabase.functions.invoke<ExtractResponse>(
+        'extract-table',
+        {
+          body: { tableId, row_id: targetRowId, provider },
+        }
+      )
 
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Extraction failed')
+      if (invokeError || !extractData) {
+        throw new Error(invokeError?.message || 'Extraction failed')
       }
-
-      const extractData: ExtractResponse = await response.json()
 
       if (extractData.status === 'failed') {
         setError(extractData.error || 'Extraction failed')

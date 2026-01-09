@@ -151,7 +151,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
           error:
             serviceError instanceof Error
               ? serviceError.message
-              : 'Failed to create service client. Make sure SUPABASE_SERVICE_ROLE_KEY is set in .env.local',
+                : 'Failed to create service client. Make sure SUPABASE_SECRET_KEY is set in .env.local',
         },
         { status: 500 }
       )

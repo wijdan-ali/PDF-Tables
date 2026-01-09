@@ -98,7 +98,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         serviceClient = createServiceClient()
       } catch (serviceError) {
         return NextResponse.json(
-          { error: `Service client error: ${serviceError instanceof Error ? serviceError.message : 'Failed to create service client. Make sure SUPABASE_SERVICE_ROLE_KEY is set in .env.local'}` },
+          {
+            error: `Service client error: ${
+              serviceError instanceof Error
+                ? serviceError.message
+                : 'Failed to create service client. Make sure SUPABASE_SECRET_KEY is set in .env.local'
+            }`,
+          },
           { status: 500 }
         )
       }
@@ -130,7 +136,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         if (insertError.message.includes('row-level security') || insertError.code === '42501') {
           return NextResponse.json(
             { 
-              error: `RLS policy violation: ${insertError.message}. This may indicate SUPABASE_SERVICE_ROLE_KEY is not set or the service client is not working correctly.` 
+              error: `RLS policy violation: ${insertError.message}. This may indicate SUPABASE_SECRET_KEY is not set or the service client is not working correctly.` 
             },
             { status: 500 }
           )

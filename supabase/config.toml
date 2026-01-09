@@ -1,0 +1,5 @@
+[functions.extract-table]
+# We verify the user JWT inside the function (auth.getClaims()).
+# This is the recommended pattern when using the new Publishable/Secret API keys.
+verify_jwt = false
+
