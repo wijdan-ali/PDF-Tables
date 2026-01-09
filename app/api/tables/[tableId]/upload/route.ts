@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createServiceClient } from '@/lib/supabase/service'
-import { v4 as uuidv4 } from 'uuid'
 
 interface RouteContext {
   params: {
@@ -88,89 +86,38 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
       return NextResponse.json({ success: true, row_id: rowId })
     } else {
-      // Client-side upload: create row and return signed upload URL
-      const body = await request.json()
-      const rowId = uuidv4()
+      // Client-side upload: delegate to Edge Function so Vercel holds no secrets.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
 
-      // Use service client for insert to bypass RLS (we've already verified ownership)
-      let serviceClient
-      try {
-        serviceClient = createServiceClient()
-      } catch (serviceError) {
-        return NextResponse.json(
-          {
-            error: `Service client error: ${
-              serviceError instanceof Error
-                ? serviceError.message
-                : 'Failed to create service client. Make sure SUPABASE_SECRET_KEY is set in .env.local'
-            }`,
-          },
-          { status: 500 }
-        )
-      }
-      
-      // Create row placeholder using service client (bypasses RLS)
-      // Note: Don't use .select() after insert with service client as it may trigger RLS checks
-      const { error: insertError } = await serviceClient
-        .from('extracted_rows')
-        .insert({
-          id: rowId,
-          table_id: params.tableId,
-          file_path: '', // Will be set after upload
-          status: 'uploaded',
-          data: {},
-          is_verified: false,
-          // Required by migration 003_row_order.sql (NOT NULL). Keep consistent with the backfill strategy.
-          row_order: Date.now() / 1000,
-        })
-
-      if (insertError) {
-        console.error('Insert error details:', {
-          message: insertError.message,
-          code: insertError.code,
-          details: insertError.details,
-          hint: insertError.hint,
-        })
-        
-        // Check if it's an RLS error and provide helpful message
-        if (insertError.message.includes('row-level security') || insertError.code === '42501') {
-          return NextResponse.json(
-            { 
-              error: `RLS policy violation: ${insertError.message}. This may indicate SUPABASE_SECRET_KEY is not set or the service client is not working correctly.` 
-            },
-            { status: 500 }
-          )
-        }
-        
-        return NextResponse.json(
-          { error: `Failed to create row: ${insertError.message}` },
-          { status: 500 }
-        )
+      const accessToken = session?.access_token
+      if (!accessToken) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
 
-      // Generate signed upload URL using service client for storage operations
-      const filePath = `user/${user.id}/table/${params.tableId}/row/${rowId}.pdf`
-      const { data: signedUrlData, error: urlError } = await serviceClient.storage
-        .from('documents')
-        .createSignedUploadUrl(filePath)
-
-      if (urlError || !signedUrlData) {
-        return NextResponse.json(
-          { error: `Failed to generate upload URL: ${urlError?.message || 'Unknown error'}` },
-          { status: 500 }
-        )
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+      if (!supabaseUrl || !publishableKey) {
+        return NextResponse.json({ error: 'Supabase env not configured' }, { status: 500 })
       }
 
-      // Update row with file_path (use service client for consistency)
-      await serviceClient
-        .from('extracted_rows')
-        .update({ file_path: filePath })
-        .eq('id', rowId)
-
-      return NextResponse.json({
-        row_id: rowId,
-        upload_url: signedUrlData.signedUrl,
+      const fnRes = await fetch(`${supabaseUrl}/functions/v1/upload-init`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: publishableKey,
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ tableId: params.tableId }),
       })
+
+      const payload = (await fnRes.json().catch(() => ({}))) as any
+      if (!fnRes.ok) {
+        return NextResponse.json({ error: payload?.error || 'Failed to initiate upload' }, { status: fnRes.status })
+      }
+
+      return NextResponse.json(payload)
     }
   } catch (error) {
     return NextResponse.json(

@@ -3,3 +3,12 @@
 # This is the recommended pattern when using the new Publishable/Secret API keys.
 verify_jwt = false
 
+[functions.upload-init]
+verify_jwt = false
+
+[functions.list-rows]
+verify_jwt = false
+
+[functions.delete-table]
+verify_jwt = false
+
