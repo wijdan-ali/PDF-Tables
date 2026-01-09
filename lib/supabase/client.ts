@@ -9,6 +9,9 @@ export function createClient(): SupabaseClient<Database> {
   if (!key) {
     throw new Error('Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')
   }
+  if (!key.startsWith('sb_publishable_')) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY must be a Publishable API key (sb_publishable_...). Legacy anon keys are disabled.')
+  }
 
   return createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
