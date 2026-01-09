@@ -11,14 +11,14 @@ export default function TableDetailRouteShell() {
   const params = useParams<{ tableId?: string }>()
   const tableId = typeof params?.tableId === 'string' ? params.tableId : null
 
-  // Only render on /tables/[tableId]
-  if (!tableId) return null
-
-  const { data } = useSWR<any>(`/api/tables/${tableId}`, fetcher, {
+  const { data } = useSWR<any>(tableId ? `/api/tables/${tableId}` : null, fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     keepPreviousData: true,
   })
+
+  // Only render on /tables/[tableId]
+  if (!tableId) return null
 
   if (!data || data.error) {
     // Keep it silent here; the layout/page can show errors if desired.
