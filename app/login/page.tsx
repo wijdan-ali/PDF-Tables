@@ -21,9 +21,9 @@ export default function LoginPage() {
     setError(null)
     setIsLoading(true)
 
-    const supabase = createClient()
-
     try {
+      const supabase = createClient()
+
       if (isSignUp) {
         const { error: signUpError } = await supabase.auth.signUp({
           email,

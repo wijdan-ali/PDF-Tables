@@ -7,8 +7,12 @@ export async function createClient(): Promise<SupabaseClient<Database>> {
   const cookieStore = await cookies()
 
   // Prefer Supabase "Publishable API key" (sb_publishable_...) on hosted platform.
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
+  if (!url) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
+  }
   if (!key) {
     throw new Error('Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')
   }
@@ -17,7 +21,7 @@ export async function createClient(): Promise<SupabaseClient<Database>> {
   }
 
   return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    url,
     key,
     {
       cookies: {
