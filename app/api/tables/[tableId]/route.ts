@@ -53,10 +53,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify ownership
+    // Verify ownership + fetch existing columns for safer normalization
     const { data: existingTable } = await supabase
       .from('user_tables')
-      .select('id')
+      .select('id, columns')
       .eq('id', params.tableId)
       .eq('user_id', user.id)
       .single()
@@ -73,18 +73,54 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     if (body.columns) {
-      // Regenerate keys and validate
+      const existingColsRaw = (existingTable as any)?.columns
+      const existingCols = Array.isArray(existingColsRaw) ? (existingColsRaw as any[]) : []
+      const existingKeySet = new Set<string>(
+        existingCols.map((c) => (typeof c?.key === 'string' ? c.key.trim() : '')).filter(Boolean)
+      )
+      const existingLabelToKey = new Map<string, string>()
+      for (const c of existingCols) {
+        const label = typeof c?.label === 'string' ? c.label.trim() : ''
+        const key = typeof c?.key === 'string' ? c.key.trim() : ''
+        if (label && key && !existingLabelToKey.has(label)) existingLabelToKey.set(label, key)
+      }
+
+      // Normalize keys and validate
+      const usedKeys = new Set<string>(existingKeySet)
       const columns = body.columns.map((col, index) => {
-        const key = col.key || generateVariableKey(col.label)
+        const label = (col.label ?? '').trim()
+        const desc = (col.desc ?? '').trim()
+
+        let key = typeof col.key === 'string' ? col.key.trim() : ''
+        // If key missing, try to preserve an existing key by label before generating a new one.
+        if (!key && label) {
+          const prior = existingLabelToKey.get(label)
+          if (prior) key = prior
+        }
+        if (!key && label) {
+          const base = generateVariableKey(label)
+          let candidate = base
+          let n = 2
+          while (usedKeys.has(candidate)) {
+            candidate = `${base}_${n}`
+            n += 1
+          }
+          key = candidate
+        }
+        usedKeys.add(key)
+
         return {
-          label: col.label,
+          label,
           key,
-          desc: col.desc,
+          desc,
           order: col.order ?? index,
         }
       })
 
       const keys = columns.map((c) => c.key)
+      if (keys.some((k) => !k || typeof k !== 'string')) {
+        return NextResponse.json({ error: 'Column keys are required' }, { status: 400 })
+      }
       if (new Set(keys).size !== keys.length) {
         return NextResponse.json(
           { error: 'Column keys must be unique' },

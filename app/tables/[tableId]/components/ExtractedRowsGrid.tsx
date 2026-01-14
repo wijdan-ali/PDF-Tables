@@ -1,50 +1,22 @@
 'use client'
 
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
-import useSWR from 'swr'
 import PdfThumbnailCell from './PdfThumbnailCell'
+import AddColumnButton from './AddColumnButton'
 import AddColumnModal from '@/app/components/AddColumnModal'
 import ConfirmDialog from '@/app/components/ConfirmDialog'
 import EditColumnModal from '@/app/components/EditColumnModal'
 import { generateVariableKey } from '@/lib/utils/slugify'
 import type { Column, ExtractedRow } from '@/types/api'
-import { Plus } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
+import { useRows } from './useRows'
+import { usePersistedRowOrder } from './usePersistedRowOrder'
 
 interface ExtractedRowsGridProps {
   tableId: string
   columns: Column[]
   onColumnsChange?: (columns: Column[]) => void
-}
-
-const fetcher = async (url: string): Promise<ExtractedRow[]> => {
-  const res = await fetch(url)
-  const data = await res.json().catch(() => null)
-  if (!res.ok) {
-    const msg = typeof data?.error === 'string' ? data.error : `Request failed (${res.status})`
-    throw new Error(msg)
-  }
-  if (!Array.isArray(data)) {
-    throw new Error('Unexpected response shape')
-  }
-  return data as ExtractedRow[]
-}
-
-function AddColumnButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl border border-primary/35 bg-primary px-2.5 py-1.5 text-[13px] font-medium text-primary-foreground shadow-sm backdrop-blur-md transition-[transform,box-shadow,filter] duration-200 ease-out hover:-translate-y-[1px] hover:shadow-md hover:brightness-[1.03] active:translate-y-0 active:brightness-[0.99]"
-    >
-      {/* subtle glass highlight */}
-      <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary-foreground/18 to-transparent opacity-60 transition-opacity duration-200 group-hover:opacity-80" />
-      <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full border border-primary-foreground/45 bg-primary-foreground/14 text-primary-foreground transition-[border-color,background-color,transform] duration-200 ease-out group-hover:border-primary-foreground/60 group-hover:bg-primary-foreground/18">
-        <Plus className="h-4 w-4" aria-hidden="true" />
-      </span>
-      <span className="relative">Add Column</span>
-    </button>
-  )
 }
 
 export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }: ExtractedRowsGridProps) {
@@ -132,27 +104,6 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     flipPrevTopsRef.current = m
   }
 
-  const { data: rows, error, mutate } = useSWR<ExtractedRow[]>(
-    `/api/tables/${tableId}/rows`,
-    fetcher,
-    {
-      // Fast polling during extraction; slow background refresh while idle to keep signed URLs fresh.
-      refreshInterval: (latest) => {
-        const isExtracting =
-          Array.isArray(latest) && latest.some((r) => r.status === 'extracting' || r.status === 'uploaded')
-        if (isExtracting) return 2000
-        return 30 * 60 * 1000 // 30 minutes
-      },
-      keepPreviousData: true,
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true,
-      focusThrottleInterval: 60 * 1000,
-      // Avoid revalidations while the user is actively interacting (prevents focus/selection quirks).
-      isPaused: () =>
-        isSaving || editingCell !== null || selectionMode || draggingRowId !== null || draggingColKey !== null,
-    }
-  )
-
   const sortedColumns = [...columns].sort((a, b) => a.order - b.order)
   const columnsByKey = (() => {
     const m: Record<string, Column> = {}
@@ -209,7 +160,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
       if (!onColumnsChange) window.location.reload()
 
       window.dispatchEvent(
-        new CustomEvent('pdf-tables:table-touched', {
+        new CustomEvent(TABLE_TOUCHED_EVENT, {
           detail: { tableId, updated_at: new Date().toISOString() },
         })
       )
@@ -221,34 +172,30 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     }
   }
 
-  // SWR cache can briefly contain non-array data (e.g. prior fetcher returned an error object).
-  // Guard all row list ops to avoid runtime crashes.
-  const rowsList: ExtractedRow[] | null = Array.isArray(rows) ? (rows as ExtractedRow[]) : null
-  const hasServerRowOrder = !!rowsList?.some((r) => typeof r.row_order === 'number')
+  const { data: rows, error, mutate } = useRows({
+    tableId,
+    isPaused: () => isSaving || editingCell !== null || selectionMode || draggingRowId !== null || draggingColKey !== null,
+  })
+
   const [pendingOrderIds, setPendingOrderIds] = useState<string[] | null>(null)
   const isDragActive = draggingRowId !== null
   const isColDragActive = draggingColKey !== null
 
-  const baseRowIds = rowsList?.map((r) => r.id) ?? []
-
-  // Local persisted ordering (works even if the DB migration isn't applied yet).
-  const ORDER_STORAGE_KEY = `pdf-tables:row-order:${tableId}`
-  const [persistedOrder, setPersistedOrder] = useState<string[] | null>(null)
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(ORDER_STORAGE_KEY)
-      if (!raw) {
-        setPersistedOrder(null)
-        return
-      }
-      const parsed = JSON.parse(raw)
-      setPersistedOrder(Array.isArray(parsed) ? (parsed as string[]) : null)
-    } catch {
-      setPersistedOrder(null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableId])
+  const {
+    rowsList,
+    hasServerRowOrder,
+    ORDER_STORAGE_KEY,
+    setPersistedOrder,
+    displayRowIds,
+    rowsById,
+    displayRows,
+  } = usePersistedRowOrder({
+    tableId,
+    rows,
+    dragOrder,
+    pendingOrderIds,
+    setPendingOrderIds,
+  })
 
   // If we ever see a cached non-array payload (e.g. old fetcher cached `{ error: ... }`),
   // kick a revalidation to self-heal without requiring a hard refresh.
@@ -256,35 +203,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     if (rows && !Array.isArray(rows) && !error) {
       void mutate()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, error])
-
-  // Clear pending order once server order matches
-  useEffect(() => {
-    if (!pendingOrderIds) return
-    const sameLength = pendingOrderIds.length === baseRowIds.length
-    const sameOrder = sameLength && pendingOrderIds.every((id, idx) => id === baseRowIds[idx])
-    if (sameOrder) {
-      setPendingOrderIds(null)
-    }
-  }, [pendingOrderIds, baseRowIds])
-
-  const mergedPersistedOrder = (() => {
-    // If server-side ordering exists, ignore local ordering to avoid fighting the DB.
-    if (hasServerRowOrder) return null
-    if (!persistedOrder?.length) return null
-    const present = new Set(baseRowIds)
-    const persistedFiltered = persistedOrder.filter((id) => present.has(id))
-    const persistedSet = new Set(persistedFiltered)
-    // New rows should appear at the top (baseRowIds is server order: newest first)
-    const missing = baseRowIds.filter((id) => !persistedSet.has(id))
-    const merged = [...missing, ...persistedFiltered]
-    return merged.length ? merged : null
-  })()
-
-  const displayRowIds = dragOrder ?? pendingOrderIds ?? mergedPersistedOrder ?? baseRowIds
-  const rowsById = new Map((rowsList ?? []).map((r) => [r.id, r] as const))
-  const displayRows = displayRowIds.map((id) => rowsById.get(id)).filter(Boolean) as ExtractedRow[]
+  }, [rows, error, mutate])
 
   const ghostRow =
     dragHasMoved && draggingRowId ? (rowsById.get(draggingRowId) as ExtractedRow | undefined) : undefined
@@ -609,7 +528,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
         void mutate()
 
         window.dispatchEvent(
-          new CustomEvent('pdf-tables:table-touched', {
+          new CustomEvent(TABLE_TOUCHED_EVENT, {
             detail: { tableId, updated_at: new Date().toISOString() },
           })
         )
@@ -1038,7 +957,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
       void mutate()
 
       window.dispatchEvent(
-        new CustomEvent('pdf-tables:table-touched', {
+        new CustomEvent(TABLE_TOUCHED_EVENT, {
           detail: { tableId, updated_at: new Date().toISOString() },
         })
       )
@@ -1084,7 +1003,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
       }
 
       window.dispatchEvent(
-        new CustomEvent('pdf-tables:table-touched', {
+        new CustomEvent(TABLE_TOUCHED_EVENT, {
           detail: { tableId, updated_at: new Date().toISOString() },
         })
       )
@@ -1116,7 +1035,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
       if (!onColumnsChange) window.location.reload()
 
       window.dispatchEvent(
-        new CustomEvent('pdf-tables:table-touched', {
+        new CustomEvent(TABLE_TOUCHED_EVENT, {
           detail: { tableId, updated_at: new Date().toISOString() },
         })
       )

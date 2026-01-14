@@ -11,6 +11,14 @@ import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import ConfirmDialog from '@/app/components/ConfirmDialog'
 import RenameTableModal from '@/app/components/RenameTableModal'
+import {
+  PROFILE_UPDATED_EVENT,
+  TABLE_CREATED_EVENT,
+  TABLE_DELETED_EVENT,
+  TABLE_NAME_UPDATED_EVENT,
+  TABLE_TOUCHED_EVENT,
+} from '@/lib/constants/events'
+import { FIRST_NAME_CACHE_KEY, GREETING_CACHE_KEY, SIDEBAR_TABLES_CACHE_KEY } from '@/lib/constants/storage'
 
 type TableSummary = {
   id: string
@@ -19,11 +27,6 @@ type TableSummary = {
   updated_at: string
   records_count: number
 }
-
-const TABLE_NAME_UPDATED_EVENT = 'pdf-tables:table-name-updated'
-const TABLE_TOUCHED_EVENT = 'pdf-tables:table-touched'
-const TABLE_CREATED_EVENT = 'pdf-tables:table-created'
-const TABLE_DELETED_EVENT = 'pdf-tables:table-deleted'
 
 type HttpError = Error & { status?: number }
 
@@ -51,10 +54,6 @@ function firstNameFromEmail(email: string): string {
   const first = cleaned.split(' ')[0] ?? ''
   return first ? first[0]!.toUpperCase() + first.slice(1) : ''
 }
-
-const SIDEBAR_TABLES_CACHE_KEY = 'pdf-tables:sidebar-tables-cache'
-const FIRST_NAME_CACHE_KEY = 'pdf-tables:first-name-cache'
-const PROFILE_UPDATED_EVENT = 'pdf-tables:profile-updated'
 
 function readCachedFirstName(): string {
   try {
@@ -160,7 +159,7 @@ export default function TablesPage() {
     }
 
     try {
-      const key = 'pdf-tables:greeting-cache'
+      const key = GREETING_CACHE_KEY
       const existing = sessionStorage.getItem(key)
       if (existing) {
         setGreeting(existing)
@@ -360,7 +359,7 @@ export default function TablesPage() {
           {tables.map((table) => (
             <div key={table.id} className="group relative">
               <Link href={`/tables/${table.id}`} className="block">
-                <Card className="hover:shadow-md">
+                <Card className="hover:shadow-md group-hover:shadow-md group-hover:border-ring/40">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg pr-8">
                       <AnimatedText text={table.table_name} />

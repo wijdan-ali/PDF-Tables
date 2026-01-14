@@ -9,6 +9,7 @@ interface RouteContext {
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
+    const MAX_PDF_BYTES = 50 * 1024 * 1024 // 50MB
     const supabase = await createClient()
     
     const {
@@ -55,6 +56,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         return NextResponse.json({ error: 'Only PDF files are supported' }, { status: 400 })
       }
 
+      if (typeof file.size === 'number' && file.size > MAX_PDF_BYTES) {
+        return NextResponse.json(
+          { error: `File is too large. Max size is ${Math.round(MAX_PDF_BYTES / (1024 * 1024))}MB.` },
+          { status: 413 }
+        )
+      }
+
       // Upload to Storage
       const filePath = `user/${user.id}/table/${params.tableId}/row/${rowId}.pdf`
       const { error: uploadError } = await supabase.storage
@@ -86,6 +94,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
       return NextResponse.json({ success: true, row_id: rowId })
     } else {
+      // Client-side upload init: validate provided metadata if present
+      const meta = (await request.json().catch(() => ({}))) as { size?: number; filename?: string }
+      const size = typeof meta.size === 'number' ? meta.size : null
+      if (size != null && size > MAX_PDF_BYTES) {
+        return NextResponse.json(
+          { error: `File is too large. Max size is ${Math.round(MAX_PDF_BYTES / (1024 * 1024))}MB.` },
+          { status: 413 }
+        )
+      }
+
       // Client-side upload: delegate to Edge Function so Vercel holds no secrets.
       const {
         data: { session },

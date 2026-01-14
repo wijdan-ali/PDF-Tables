@@ -11,6 +11,15 @@ import { PanelLeftClose } from 'lucide-react'
 import ConfirmDialog from '@/app/components/ConfirmDialog'
 import RenameTableModal from '@/app/components/RenameTableModal'
 import { Pencil, Trash2 } from 'lucide-react'
+import GrainOverlay from '@/components/GrainOverlay'
+import {
+  TABLE_CREATED_EVENT,
+  TABLE_DELETED_EVENT,
+  TABLE_NAME_UPDATED_EVENT,
+  TABLE_TOUCHED_EVENT,
+} from '@/lib/constants/events'
+import { SIDEBAR_TABLES_CACHE_KEY } from '@/lib/constants/storage'
+import { useAiProvider } from '@/lib/hooks/useUserSettings'
 
 interface Table {
   id: string
@@ -23,12 +32,6 @@ interface SidebarProps {
   onToggleCollapsed?: () => void
 }
 
-const TABLE_NAME_UPDATED_EVENT = 'pdf-tables:table-name-updated'
-const TABLE_TOUCHED_EVENT = 'pdf-tables:table-touched'
-const TABLE_CREATED_EVENT = 'pdf-tables:table-created'
-const TABLE_DELETED_EVENT = 'pdf-tables:table-deleted'
-const SIDEBAR_TABLES_CACHE_KEY = 'pdf-tables:sidebar-tables-cache'
-const AI_PROVIDER_STORAGE_KEY = 'pdf-tables:ai-provider'
 type AiProvider = 'chatpdf' | 'gemini'
 
 // Tune these to control the extra grain layer (separate from Silk's noiseIntensity).
@@ -69,17 +72,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
   const [loading, setLoading] = useState<boolean>(() =>
     typeof window === 'undefined' ? true : readTablesCache().length === 0
   )
-  const [aiProvider, setAiProvider] = useState<AiProvider>(() => {
-    if (typeof window === 'undefined') return 'chatpdf'
-    try {
-      const raw = localStorage.getItem(AI_PROVIDER_STORAGE_KEY)
-      return raw === 'gemini' ? 'gemini' : 'chatpdf'
-    } catch {
-      return 'chatpdf'
-    }
-  })
-  const [userId, setUserId] = useState<string | null>(null)
-  const didInitAiProviderRef = useRef(false)
+  const { aiProvider, setAiProvider } = useAiProvider()
   const [openMenu, setOpenMenu] = useState<{ tableId: string; left: number; top: number } | null>(null)
   const [confirmDeleteTableId, setConfirmDeleteTableId] = useState<string | null>(null)
   const [renameTableId, setRenameTableId] = useState<string | null>(null)
@@ -87,26 +80,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
   const shellRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number | null>(null)
   const didHydrateFromServerRef = useRef(false)
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(AI_PROVIDER_STORAGE_KEY, aiProvider)
-    } catch {
-      // ignore
-    }
-  }, [aiProvider])
-
-  // Keep AI provider synced to DB (fallback remains localStorage for resiliency).
-  useEffect(() => {
-    if (!didInitAiProviderRef.current) return
-    if (!userId) return
-
-    const supabase = createClient()
-    void supabase.from('user_settings').upsert(
-      { user_id: userId, ai_provider: aiProvider },
-      { onConflict: 'user_id' }
-    )
-  }, [aiProvider, userId])
 
   useEffect(() => {
     if (!openMenu) return
@@ -177,29 +150,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
       if (!user) {
         router.push('/login')
         return
-      }
-      setUserId(user.id)
-
-      // Try DB preference first, fallback to localStorage.
-      try {
-        const { data: settings } = await supabase
-          .from('user_settings')
-          .select('ai_provider')
-          .eq('user_id', user.id)
-          .maybeSingle()
-
-        const pref = settings?.ai_provider
-        if (pref === 'gemini' || pref === 'chatpdf') {
-          setAiProvider(pref)
-          try {
-            localStorage.setItem(AI_PROVIDER_STORAGE_KEY, pref)
-          } catch {
-            // ignore
-          }
-        }
-      } finally {
-        // From this point on, changes should be persisted to DB.
-        didInitAiProviderRef.current = true
       }
 
       const { data, error } = await supabase
@@ -339,18 +289,12 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
             }}
           />
           {/* Extra grain layer ABOVE blur (tweak SIDEBAR_GRAIN_* constants) */}
-          <div
-            className="absolute inset-0 rounded-tr-[28px] rounded-br-[28px]"
-            style={{
-              opacity: SIDEBAR_GRAIN_OPACITY,
-              // Real noise via SVG turbulence (stronger + more natural than repeating lines)
-              backgroundImage:
-                `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
-              backgroundRepeat: 'repeat',
-              backgroundSize: `${Math.max(8, SIDEBAR_GRAIN_SCALE_PX)}px ${Math.max(8, SIDEBAR_GRAIN_SCALE_PX)}px`,
-              mixBlendMode: 'soft-light',
-              filter: `contrast(${SIDEBAR_GRAIN_CONTRAST}) brightness(${SIDEBAR_GRAIN_BRIGHTNESS})`,
-            }}
+          <GrainOverlay
+            className="rounded-tr-[28px] rounded-br-[28px]"
+            opacity={SIDEBAR_GRAIN_OPACITY}
+            scalePx={SIDEBAR_GRAIN_SCALE_PX}
+            contrast={SIDEBAR_GRAIN_CONTRAST}
+            brightness={SIDEBAR_GRAIN_BRIGHTNESS}
           />
         </div>
 

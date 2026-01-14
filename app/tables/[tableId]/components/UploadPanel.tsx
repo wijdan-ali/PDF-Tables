@@ -6,6 +6,9 @@ import { useSWRConfig } from 'swr'
 import type { UploadResponse, ExtractResponse } from '@/types/api'
 import type { ExtractedRow } from '@/types/api'
 import { createClient } from '@/lib/supabase/client'
+import { TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
+import { AI_PROVIDER_STORAGE_KEY } from '@/lib/constants/storage'
+import GrainOverlay from '@/components/GrainOverlay'
 
 // Separate grain overlay (independent from Silk noise). Tweak freely.
 const UPLOAD_GRAIN_OPACITY = 0.55
@@ -137,7 +140,7 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
     try {
       // Touch table immediately so sidebar reorders right away.
       window.dispatchEvent(
-        new CustomEvent('pdf-tables:table-touched', {
+        new CustomEvent(TABLE_TOUCHED_EVENT, {
           detail: { tableId, updated_at: new Date().toISOString() },
         })
       )
@@ -218,14 +221,14 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
 
     try {
       window.dispatchEvent(
-        new CustomEvent('pdf-tables:table-touched', {
+        new CustomEvent(TABLE_TOUCHED_EVENT, {
           detail: { tableId, updated_at: new Date().toISOString() },
         })
       )
 
       let provider: 'chatpdf' | 'gemini' = 'chatpdf'
       try {
-        const raw = localStorage.getItem('pdf-tables:ai-provider')
+        const raw = localStorage.getItem(AI_PROVIDER_STORAGE_KEY)
         provider = raw === 'gemini' ? 'gemini' : 'chatpdf'
       } catch {
         provider = 'chatpdf'
@@ -330,24 +333,18 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
             }}
           />
           {/* Extra grain layer ABOVE blur/spotlight (independent from Silk noise) */}
-          <div
-            className="absolute inset-0"
-            style={{
-              opacity: UPLOAD_GRAIN_OPACITY,
-              backgroundImage:
-                `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
-              backgroundRepeat: 'repeat',
-              backgroundSize: `${Math.max(8, UPLOAD_GRAIN_SCALE_PX)}px ${Math.max(8, UPLOAD_GRAIN_SCALE_PX)}px`,
-              mixBlendMode: 'soft-light',
-              filter: `contrast(${UPLOAD_GRAIN_CONTRAST}) brightness(${UPLOAD_GRAIN_BRIGHTNESS})`,
-            }}
+          <GrainOverlay
+            opacity={UPLOAD_GRAIN_OPACITY}
+            scalePx={UPLOAD_GRAIN_SCALE_PX}
+            contrast={UPLOAD_GRAIN_CONTRAST}
+            brightness={UPLOAD_GRAIN_BRIGHTNESS}
           />
         </div>
 
         {/* Foreground */}
         <div className="relative z-10 flex h-full flex-col justify-center items-start">
           <div className="space-y-2">
-            <div className="font-serif text-[16px] tracking-wide">Upload file</div>
+            <div className="font-serif font-bold text-[16px] tracking-medium">Upload file</div>
             <div className="text-[12px] text-muted-foreground">Upload a PDF to extract rows.</div>
           </div>
 

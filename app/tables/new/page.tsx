@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-
-const TABLE_CREATED_EVENT = 'pdf-tables:table-created'
+import { TABLE_CREATED_EVENT } from '@/lib/constants/events'
 
 export default function CreateTablePage() {
   const router = useRouter()

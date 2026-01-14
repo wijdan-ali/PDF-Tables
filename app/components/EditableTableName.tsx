@@ -1,15 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { TABLE_NAME_UPDATED_EVENT, TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
 
 interface EditableTableNameProps {
   tableId: string
   initialName: string
   onUpdate?: (newName: string) => void
 }
-
-const TABLE_NAME_UPDATED_EVENT = 'pdf-tables:table-name-updated'
-const TABLE_TOUCHED_EVENT = 'pdf-tables:table-touched'
 
 export default function EditableTableName({ tableId, initialName, onUpdate }: EditableTableNameProps) {
   const [name, setName] = useState(initialName)

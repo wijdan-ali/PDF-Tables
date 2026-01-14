@@ -3,8 +3,9 @@
 import type { ComponentType } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { LifeBuoy, LogOut, Settings } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { useUserInitial } from '@/lib/hooks/useUserProfile'
 
 type MenuItem = {
   key: string
@@ -18,90 +19,13 @@ const MENU_ITEMS: MenuItem[] = [
   { key: 'signout', label: 'Sign out', icon: LogOut },
 ]
 
-const USER_INITIAL_CACHE_KEY = 'pdf-tables:user-initial-cache'
-const PROFILE_UPDATED_EVENT = 'pdf-tables:profile-updated'
-
-function readCachedInitial(): string | null {
-  try {
-    const raw = sessionStorage.getItem(USER_INITIAL_CACHE_KEY)
-    return raw ? raw : null
-  } catch {
-    return null
-  }
-}
-
-function writeCachedInitial(v: string) {
-  try {
-    sessionStorage.setItem(USER_INITIAL_CACHE_KEY, v)
-  } catch {
-    // ignore
-  }
-}
-
 export default function TopBar() {
   const router = useRouter()
-  // Important: avoid hydration mismatches by not reading sessionStorage during render.
-  // We always render the same initial markup (a small skeleton) and then hydrate to the cached/remote initial.
-  const [initial, setInitial] = useState<string | null>(null)
-  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
+  const { initial, isInitialLoading } = useUserInitial()
   const [open, setOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    // Fast path: use cached initial (after mount).
-    const cached = readCachedInitial()
-    if (cached) {
-      setInitial(cached)
-      setIsInitialLoading(false)
-    }
-
-    const supabase = createClient()
-    void supabase.auth.getUser().then(({ data }) => {
-      const user = data.user
-      if (!user) {
-        setInitial(null)
-        setIsInitialLoading(false)
-        return
-      }
-
-      const email = user.email ?? ''
-
-      const fallbackFullName =
-        (user.user_metadata && typeof user.user_metadata.full_name === 'string'
-          ? user.user_metadata.full_name
-          : '') || ''
-
-      void supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .maybeSingle()
-        .then(({ data: profile }) => {
-          const fullName = (profile?.full_name ?? fallbackFullName).trim()
-          const source = fullName || email.trim()
-          const next = source ? source[0]!.toUpperCase() : '?'
-          setInitial(next)
-          writeCachedInitial(next)
-          setIsInitialLoading(false)
-        })
-    })
-  }, [])
-
-  // If profile name changes elsewhere (e.g. Settings), update immediately.
-  useEffect(() => {
-    const onProfileUpdated = (evt: Event) => {
-      const e = evt as CustomEvent<{ initial?: string }>
-      const next = (e.detail?.initial ?? '').trim()
-      if (!next) return
-      setInitial(next)
-      writeCachedInitial(next)
-      setIsInitialLoading(false)
-    }
-    window.addEventListener(PROFILE_UPDATED_EVENT, onProfileUpdated as EventListener)
-    return () => window.removeEventListener(PROFILE_UPDATED_EVENT, onProfileUpdated as EventListener)
-  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -153,10 +77,10 @@ export default function TopBar() {
 
   return (
     <div
-      className="fixed top-4 left-0 right-0 z-40 bg-background"
-      style={{ height: 'var(--topbar-h, 56px)' }}
+      className="fixed top-0 left-0 right-0 z-40 bg-background"
+      style={{ height: '4.5rem' }}
     >
-      <div className="h-full w-full flex items-top justify-end pr-8">
+      <div className="h-full w-full flex items-top justify-end pr-8 pt-4">
         <div className="relative">
           <button
             ref={btnRef}

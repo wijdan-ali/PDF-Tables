@@ -6,6 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useSWRConfig } from 'swr'
+import ModalShell from '@/app/components/ModalShell'
 
 interface RenameTableModalProps {
   isOpen: boolean
@@ -101,45 +102,43 @@ export default function RenameTableModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm" onMouseDown={onClose}>
-      <div className="w-full max-w-md px-4" onMouseDown={(e) => e.stopPropagation()}>
-        <Card className="shadow-xl">
-          <CardHeader>
-            <CardTitle>Rename table</CardTitle>
-          </CardHeader>
+    <ModalShell open={isOpen} onClose={onClose} contentClassName="w-full max-w-md px-4">
+      <Card className="shadow-xl">
+        <CardHeader>
+          <CardTitle>Rename table</CardTitle>
+        </CardHeader>
 
-          <form onSubmit={(e) => void handleSubmit(e)}>
-            <CardContent className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="rename-table-name">Table name</Label>
-                <Input
-                  ref={inputRef}
-                  id="rename-table-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  disabled={isSaving}
-                />
+        <form onSubmit={(e) => void handleSubmit(e)}>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="rename-table-name">Table name</Label>
+              <Input
+                ref={inputRef}
+                id="rename-table-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isSaving}
+              />
+            </div>
+
+            {error && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
               </div>
+            )}
+          </CardContent>
 
-              {error && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {error}
-                </div>
-              )}
-            </CardContent>
-
-            <CardFooter className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={onClose} disabled={isSaving}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? 'Saving…' : 'Save'}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-      </div>
-    </div>
+          <CardFooter className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? 'Saving…' : 'Save'}
+            </Button>
+          </CardFooter>
+        </form>
+      </Card>
+    </ModalShell>
   )
 }
 

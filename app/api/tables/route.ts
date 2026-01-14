@@ -86,30 +86,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: tables, error } = await supabase
-      .from('user_tables')
-      // Include embedded aggregate count of extracted_rows per table (records count).
-      .select('id, table_name, created_at, updated_at, extracted_rows(count)')
-      .eq('user_id', user.id)
-      .order('updated_at', { ascending: false })
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    // Note: Supabase generated types may not include freshly added RPCs yet.
+    // Cast to any to avoid build-time type errors until types are regenerated.
+    const { data: tables, error } = await (supabase as any).rpc('get_user_tables_with_counts')
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     const normalized =
-      (tables ?? []).map((t: any) => {
-        const counts = Array.isArray(t?.extracted_rows) ? t.extracted_rows : []
-        const countVal = counts?.[0]?.count
-        const records_count = typeof countVal === 'number' ? countVal : Number(countVal ?? 0) || 0
-        return {
-          id: t.id,
-          table_name: t.table_name,
-          created_at: t.created_at,
-          updated_at: t.updated_at,
-          records_count,
-        }
-      }) ?? []
+      (tables ?? []).map((t: any) => ({
+        id: t.id,
+        table_name: t.table_name,
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+        records_count: typeof t.records_count === 'number' ? t.records_count : Number(t.records_count ?? 0) || 0,
+      })) ?? []
 
     return NextResponse.json(normalized)
   } catch (error) {

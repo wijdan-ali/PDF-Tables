@@ -1,13 +1,12 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.90.1'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 
 function json(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders,
       ...(init.headers ?? {}),
     },
   })
@@ -27,8 +26,9 @@ function getBearerToken(req: Request): string {
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 })
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405, headers: corsHeaders })
 
   try {
     const supabaseUrl = getEnv('SUPABASE_URL')
@@ -43,11 +43,11 @@ serve(async (req) => {
     })
     const { data: claimsData, error: claimsErr } = await authClient.auth.getClaims(token)
     const userId = claimsData?.claims?.sub
-    if (claimsErr || !userId) return json({ error: 'Unauthorized' }, { status: 401 })
+    if (claimsErr || !userId) return json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders })
 
     const body = (await req.json().catch(() => ({}))) as { tableId?: string }
     const tableId = body.tableId
-    if (!tableId) return json({ error: 'tableId is required' }, { status: 400 })
+    if (!tableId) return json({ error: 'tableId is required' }, { status: 400, headers: corsHeaders })
 
     const userClient = createClient(supabaseUrl, publishableKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
@@ -60,7 +60,7 @@ serve(async (req) => {
       .select('id')
       .eq('id', tableId)
       .single()
-    if (tableErr || !table) return json({ error: 'Table not found' }, { status: 404 })
+    if (tableErr || !table) return json({ error: 'Table not found' }, { status: 404, headers: corsHeaders })
 
     // Fetch rows with row_order ordering, fallback if migration missing.
     let rows: any[] = []
@@ -85,10 +85,10 @@ serve(async (req) => {
         .eq('table_id', tableId)
         .order('created_at', { ascending: false })
 
-      if (fallback.error) return json({ error: fallback.error.message }, { status: 500 })
+      if (fallback.error) return json({ error: fallback.error.message }, { status: 500, headers: corsHeaders })
       rows = fallback.data ?? []
     } else {
-      return json({ error: primary.error.message }, { status: 500 })
+      return json({ error: primary.error.message }, { status: 500, headers: corsHeaders })
     }
 
     const secretClient = createClient(supabaseUrl, secretKey, {
@@ -101,19 +101,22 @@ serve(async (req) => {
         const filePath = typeof row.file_path === 'string' ? row.file_path.trim() : ''
         const thumbnailPath = typeof row.thumbnail_path === 'string' ? row.thumbnail_path.trim() : ''
 
-        const pdf_url = filePath
-          ? await secretClient.storage
+        // Create both promises immediately, then await in parallel.
+        const pdfUrlPromise = filePath
+          ? secretClient.storage
               .from('documents')
               .createSignedUrl(filePath, SIGNED_URL_EXPIRES_IN_SECONDS)
               .then(({ data }) => data?.signedUrl)
-          : undefined
+          : Promise.resolve(undefined)
 
-        const thumbnail_url = thumbnailPath
-          ? await secretClient.storage
+        const thumbnailUrlPromise = thumbnailPath
+          ? secretClient.storage
               .from('documents')
               .createSignedUrl(thumbnailPath, SIGNED_URL_EXPIRES_IN_SECONDS)
               .then(({ data }) => data?.signedUrl)
-          : undefined
+          : Promise.resolve(undefined)
+
+        const [pdf_url, thumbnail_url] = await Promise.all([pdfUrlPromise, thumbnailUrlPromise])
 
         return {
           ...row,
@@ -124,10 +127,10 @@ serve(async (req) => {
       })
     )
 
-    return json(rowsWithUrls)
+    return json(rowsWithUrls, { headers: corsHeaders })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Internal server error'
-    return json({ error: msg }, { status: 500 })
+    return json({ error: msg }, { status: 500, headers: corsHeaders })
   }
 })
 

@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import ModalShell from '@/app/components/ModalShell'
 
 interface AddColumnModalProps {
   isOpen: boolean
@@ -62,57 +63,52 @@ export default function AddColumnModal({ isOpen, onClose, onAdd, existingKeys }:
   if (!isOpen) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div className="w-full max-w-md px-4" onClick={(e) => e.stopPropagation()}>
-        <Card className="shadow-xl">
-          <CardHeader>
-            <CardTitle>Add Column</CardTitle>
-          </CardHeader>
+    <ModalShell open={isOpen} onClose={onClose} contentClassName="w-full max-w-md px-4">
+      <Card className="shadow-xl">
+        <CardHeader>
+          <CardTitle>Add Column</CardTitle>
+        </CardHeader>
 
-          <form onSubmit={handleSubmit}>
-            <CardContent className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="column-label">Column Name</Label>
-                <Input
-                  ref={labelInputRef}
-                  id="column-label"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder="e.g., Total Amount"
-                />
+        <form onSubmit={handleSubmit}>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="column-label">Column Name</Label>
+              <Input
+                ref={labelInputRef}
+                id="column-label"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="e.g., Total Amount"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="column-desc">Description</Label>
+              <Textarea
+                id="column-desc"
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="e.g., The final amount including tax"
+                rows={3}
+              />
+            </div>
+
+            {error && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
               </div>
+            )}
+          </CardContent>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="column-desc">Description</Label>
-                <Textarea
-                  id="column-desc"
-                  value={desc}
-                  onChange={(e) => setDesc(e.target.value)}
-                  placeholder="e.g., The final amount including tax"
-                  rows={3}
-                />
-              </div>
-
-              {error && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {error}
-                </div>
-              )}
-            </CardContent>
-
-            <CardFooter className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button type="submit">Add Column</Button>
-            </CardFooter>
-          </form>
-        </Card>
-      </div>
-    </div>
+          <CardFooter className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">Add Column</Button>
+          </CardFooter>
+        </form>
+      </Card>
+    </ModalShell>
   )
 }
 

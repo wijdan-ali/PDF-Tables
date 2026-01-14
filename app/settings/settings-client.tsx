@@ -8,16 +8,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
 import { LifeBuoy, LogOut, Save, Shield, User } from 'lucide-react'
+import { PROFILE_UPDATED_EVENT } from '@/lib/constants/events'
+import { FIRST_NAME_CACHE_KEY, USER_INITIAL_CACHE_KEY } from '@/lib/constants/storage'
 
 type InitialProfile = {
   email: string
   full_name: string
   company_name: string
 }
-
-const FIRST_NAME_CACHE_KEY = 'pdf-tables:first-name-cache'
-const USER_INITIAL_CACHE_KEY = 'pdf-tables:user-initial-cache'
-const PROFILE_UPDATED_EVENT = 'pdf-tables:profile-updated'
 
 function extractFirstName(fullName: string): string {
   const cleaned = fullName.trim().replace(/\s+/g, ' ')

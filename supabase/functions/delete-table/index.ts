@@ -1,13 +1,12 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.90.1'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 
 function json(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders,
       ...(init.headers ?? {}),
     },
   })
@@ -27,8 +26,9 @@ function getBearerToken(req: Request): string {
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 })
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405, headers: corsHeaders })
 
   try {
     const supabaseUrl = getEnv('SUPABASE_URL')
@@ -79,20 +79,30 @@ serve(async (req) => {
     })
 
     // Delete storage objects first (batch).
+    const removePromises: Array<Promise<{ error: any }>> = []
     for (let i = 0; i < paths.length; i += 500) {
       const batch = paths.slice(i, i + 500)
-      const { error: removeErr } = await secretClient.storage.from('documents').remove(batch)
-      if (removeErr) return json({ error: `Failed to delete files: ${removeErr.message}` }, { status: 500 })
+      removePromises.push(secretClient.storage.from('documents').remove(batch))
+    }
+
+    const results = await Promise.all(removePromises)
+    for (const result of results) {
+      if (result.error) {
+        return json(
+          { error: `Failed to delete files: ${result.error.message ?? String(result.error)}` },
+          { status: 500, headers: corsHeaders }
+        )
+      }
     }
 
     // Delete the table (cascades extracted_rows via FK).
     const { error: delErr } = await userClient.from('user_tables').delete().eq('id', tableId)
-    if (delErr) return json({ error: delErr.message }, { status: 500 })
+    if (delErr) return json({ error: delErr.message }, { status: 500, headers: corsHeaders })
 
-    return json({ success: true })
+    return json({ success: true }, { headers: corsHeaders })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Internal server error'
-    return json({ error: msg }, { status: 500 })
+    return json({ error: msg }, { status: 500, headers: corsHeaders })
   }
 })
 

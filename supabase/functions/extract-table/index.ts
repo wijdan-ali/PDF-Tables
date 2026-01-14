@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.90.1'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { GoogleGenAI, createPartFromUri } from 'npm:@google/genai@1.34.0'
 
 type Provider = 'chatpdf' | 'gemini'
@@ -18,7 +18,6 @@ function json(body: unknown, init: ResponseInit = {}) {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders,
       ...(init.headers ?? {}),
     },
   })
@@ -248,8 +247,9 @@ async function extractWithGemini(pdfUrl: string, prompt: string, displayName: st
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 })
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405, headers: corsHeaders })
 
   try {
     const supabaseUrl = getEnv('SUPABASE_URL')
@@ -270,7 +270,7 @@ serve(async (req) => {
 
     const { data: claimsData, error: claimsErr } = await authClient.auth.getClaims(token)
     const userId = claimsData?.claims?.sub
-    if (claimsErr || !userId) return json({ error: 'Unauthorized' }, { status: 401 })
+    if (claimsErr || !userId) return json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders })
 
     // Use the user's JWT for all DB operations so RLS is enforced.
     const userClient = createClient(supabaseUrl, publishableKey, {
@@ -289,8 +289,8 @@ serve(async (req) => {
     const rowId = body.row_id
     const provider: Provider = body.provider === 'gemini' ? 'gemini' : 'chatpdf'
 
-    if (!tableId) return json({ error: 'tableId is required' }, { status: 400 })
-    if (!rowId) return json({ error: 'row_id is required' }, { status: 400 })
+    if (!tableId) return json({ error: 'tableId is required' }, { status: 400, headers: corsHeaders })
+    if (!rowId) return json({ error: 'row_id is required' }, { status: 400, headers: corsHeaders })
 
     // Use the authed client so RLS enforces ownership.
     const { data: table, error: tableErr } = await userClient
@@ -299,20 +299,59 @@ serve(async (req) => {
       .eq('id', tableId)
       .single()
 
-    if (tableErr || !table) return json({ error: 'Table not found' }, { status: 404 })
+    if (tableErr || !table) return json({ error: 'Table not found' }, { status: 404, headers: corsHeaders })
 
     const { data: row, error: rowErr } = await userClient
       .from('extracted_rows')
-      .select('id, table_id, file_path, status')
+      .select('id, table_id, file_path, status, data, updated_at')
       .eq('id', rowId)
       .eq('table_id', tableId)
       .single()
 
-    if (rowErr || !row) return json({ error: 'Row not found' }, { status: 404 })
-    if (!row.file_path || String(row.file_path).trim() === '') return json({ error: 'PDF file not uploaded' }, { status: 400 })
+    if (rowErr || !row) return json({ error: 'Row not found' }, { status: 404, headers: corsHeaders })
+    if (!row.file_path || String(row.file_path).trim() === '') {
+      return json({ error: 'PDF file not uploaded' }, { status: 400, headers: corsHeaders })
+    }
 
-    // Move to extracting early (UI + polling)
-    await userClient.from('extracted_rows').update({ status: 'extracting' }).eq('id', rowId)
+    // Idempotency + stuck-extracting mitigation:
+    // - If already extracted, return immediately (no re-run).
+    // - If extracting and recently updated, avoid duplicate concurrent work.
+    const EXTRACTING_TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes
+    const updatedAtMs = row.updated_at ? Date.parse(String(row.updated_at)) : NaN
+    const updatedAgeMs = Number.isFinite(updatedAtMs) ? Date.now() - updatedAtMs : Infinity
+
+    if (row.status === 'extracted') {
+      return json(
+        { status: 'extracted', data: (row as any).data as Record<string, string | number | null> } satisfies ExtractResponse,
+        { headers: corsHeaders }
+      )
+    }
+    if (row.status === 'extracting' && updatedAgeMs < EXTRACTING_TIMEOUT_MS) {
+      return json({ status: 'extracting' } satisfies ExtractResponse, { headers: corsHeaders })
+    }
+
+    // Move to extracting early (UI + polling) with a best-effort concurrency guard.
+    // If another invocation already flipped the row to extracting, this update will no-op.
+    const eligibleStatuses: Array<'uploaded' | 'failed'> = ['uploaded', 'failed']
+    const canRetryStaleExtracting = row.status === 'extracting' && updatedAgeMs >= EXTRACTING_TIMEOUT_MS
+
+    const startQuery = userClient
+      .from('extracted_rows')
+      .update({ status: 'extracting', error: null })
+      .eq('id', rowId)
+      .select('id, status, updated_at')
+
+    const startRes = canRetryStaleExtracting
+      ? await startQuery
+      : await startQuery.in('status', eligibleStatuses)
+
+    if (startRes.error) {
+      return json({ error: startRes.error.message }, { status: 500, headers: corsHeaders })
+    }
+    // If no rows were updated, someone else likely started extraction first.
+    if (!startRes.data || (Array.isArray(startRes.data) && startRes.data.length === 0)) {
+      return json({ status: 'extracting' } satisfies ExtractResponse, { headers: corsHeaders })
+    }
 
     // Storage signed URL should not be done with publishable key.
     const serviceClient = createClient(supabaseUrl, secretKey, {
@@ -326,7 +365,7 @@ serve(async (req) => {
     if (urlErr || !signedUrlData?.signedUrl) {
       const msg = `Failed to generate PDF URL: ${urlErr?.message || 'Unknown error'}`
       await userClient.from('extracted_rows').update({ status: 'failed', error: msg }).eq('id', rowId)
-      return json({ error: msg }, { status: 500 })
+      return json({ error: msg }, { status: 500, headers: corsHeaders })
     }
 
     const colsRaw = (table as any).columns as any[]
@@ -336,7 +375,7 @@ serve(async (req) => {
 
     if (columns.length === 0) {
       await userClient.from('extracted_rows').update({ status: 'failed', error: 'Table schema has no columns' }).eq('id', rowId)
-      return json({ status: 'failed', error: 'Table schema has no columns' } satisfies ExtractResponse)
+      return json({ status: 'failed', error: 'Table schema has no columns' } satisfies ExtractResponse, { headers: corsHeaders })
     }
 
     const prompt = buildExtractionPrompt(columns)
@@ -358,7 +397,7 @@ serve(async (req) => {
           .from('extracted_rows')
           .update({ status: 'failed', error: parsed.error, raw_response: truncated })
           .eq('id', rowId)
-        return json({ status: 'failed', error: parsed.error } satisfies ExtractResponse)
+        return json({ status: 'failed', error: parsed.error } satisfies ExtractResponse, { headers: corsHeaders })
       }
 
       extracted = validateAndNormalize(parsed.data, columns)
@@ -368,7 +407,7 @@ serve(async (req) => {
         .from('extracted_rows')
         .update({ status: 'failed', error: msg, raw_response: truncateForStorage(msg) })
         .eq('id', rowId)
-      return json({ status: 'failed', error: msg } satisfies ExtractResponse)
+      return json({ status: 'failed', error: msg } satisfies ExtractResponse, { headers: corsHeaders })
     }
 
     await userClient
@@ -381,10 +420,10 @@ serve(async (req) => {
       })
       .eq('id', rowId)
 
-    return json({ status: 'extracted', data: extracted } satisfies ExtractResponse)
+    return json({ status: 'extracted', data: extracted } satisfies ExtractResponse, { headers: corsHeaders })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Internal server error'
-    return json({ error: msg }, { status: 500 })
+    return json({ error: msg }, { status: 500, headers: corsHeaders })
   }
 })
 

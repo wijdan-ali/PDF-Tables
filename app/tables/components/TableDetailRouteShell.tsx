@@ -6,9 +6,9 @@ import TableDetailClient from '../[tableId]/components/TableDetailClient'
 import type { Table } from '@/types/api'
 import { useEffect } from 'react'
 import TableDetailSkeleton from '../[tableId]/components/TableDetailSkeleton'
+import { TABLE_NAME_UPDATED_EVENT } from '@/lib/constants/events'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
-const TABLE_NAME_UPDATED_EVENT = 'pdf-tables:table-name-updated'
 
 export default function TableDetailRouteShell() {
   const params = useParams<{ tableId?: string }>()

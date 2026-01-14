@@ -4,6 +4,7 @@ import { useMemo, useRef } from 'react'
 import useSWR from 'swr'
 import type { ExtractedRow } from '@/types/api'
 import { Skeleton } from '@/components/ui/skeleton'
+import GrainOverlay from '@/components/GrainOverlay'
 
 interface RecordsCardProps {
   tableId: string
@@ -65,35 +66,20 @@ export default function RecordsCard({ tableId }: RecordsCardProps) {
         />
 
         {/* Grain: subtle in light, stronger in dark */}
-        <div
-          className="absolute inset-0 opacity-[0.14] dark:opacity-0"
-          style={{
-            backgroundImage:
-              `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'repeat',
-            backgroundSize: `${Math.max(8, RECORDS_GRAIN_SCALE_PX)}px ${Math.max(8, RECORDS_GRAIN_SCALE_PX)}px`,
-            mixBlendMode: 'soft-light',
-            filter: `contrast(${RECORDS_GRAIN_CONTRAST}) brightness(${RECORDS_GRAIN_BRIGHTNESS})`,
-          }}
-        />
-        <div
-          className="absolute inset-0 opacity-0 dark:opacity-[0.5]"
-          style={{
-            backgroundImage:
-              `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'repeat',
-            backgroundSize: `${Math.max(8, RECORDS_GRAIN_SCALE_PX)}px ${Math.max(8, RECORDS_GRAIN_SCALE_PX)}px`,
-            mixBlendMode: 'soft-light',
-            filter: `contrast(${RECORDS_GRAIN_CONTRAST}) brightness(${RECORDS_GRAIN_BRIGHTNESS})`,
-          }}
+        <GrainOverlay
+          opacity={0.14}
+          darkOpacity={0.5}
+          scalePx={RECORDS_GRAIN_SCALE_PX}
+          contrast={RECORDS_GRAIN_CONTRAST}
+          brightness={RECORDS_GRAIN_BRIGHTNESS}
         />
       </div>
 
       {/* Content */}
       <div className="relative z-10 h-full px-6 flex flex-col justify-center items-start">
-        <div className="font-serif text-[16px] font-bold tracking-wide">Number Of Records</div>
+        <div className="font-serif text-[16px] font-bold tracking-medium">Number Of Records</div>
 
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-6 flex items-center gap-3">
           <div className="h-3.5 w-3.5 rounded-full bg-foreground/15" />
           {count === null ? (
             <Skeleton className="h-10 w-24 rounded-xl" />
