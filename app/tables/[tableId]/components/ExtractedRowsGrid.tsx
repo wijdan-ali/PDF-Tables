@@ -9,6 +9,7 @@ import EditColumnModal from '@/app/components/EditColumnModal'
 import { generateVariableKey } from '@/lib/utils/slugify'
 import type { Column, ExtractedRow } from '@/types/api'
 import { Plus } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface ExtractedRowsGridProps {
   tableId: string
@@ -1154,7 +1155,10 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-16 bg-muted animate-pulse rounded"></div>
+          <div key={i} className="rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="mt-3 h-4 w-28" />
+          </div>
         ))}
       </div>
     )
@@ -1614,7 +1618,9 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                       <div className={`flex pl-3 ${rowIdx === 0 ? '' : 'border-t border-border'}`}>
                 {bodyColumns.map((column) => {
                   const value = row.data[column.key] ?? null
-                  const displayValue = value === null || value === '' ? '—' : String(value)
+                  const isPending = row.status === 'uploaded' || row.status === 'extracting'
+                  const hasValue = !(value === null || value === '')
+                  const displayValue = hasValue ? String(value) : '—'
                     const isEditing = editingCell?.rowId === row.id && editingCell?.columnKey === column.key
 
                   return (
@@ -1666,7 +1672,11 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                               className="cell-text text-sm text-foreground pr-6 min-h-[1.5rem] overflow-x-auto scrollbar-hide whitespace-pre-wrap break-words"
                               style={{ lineHeight: '1.5rem', padding: 0, margin: 0 }}
                         >
-                              {displayValue}
+                              {isPending && !hasValue ? (
+                                <Skeleton className="h-4 w-24 rounded-lg" />
+                              ) : (
+                                displayValue
+                              )}
                             </div>
                         <button
                               onClick={() => startEditingCell(row.id, column.key, value)}

@@ -12,6 +12,60 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      user_settings: {
+        Row: {
+          user_id: string
+          theme: string
+          ai_provider: string
+          sidebar_collapsed: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          theme?: string
+          ai_provider?: string
+          sidebar_collapsed?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          theme?: string
+          ai_provider?: string
+          sidebar_collapsed?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          id: string
+          email: string | null
+          full_name: string | null
+          company_name: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          email?: string | null
+          full_name?: string | null
+          company_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string | null
+          full_name?: string | null
+          company_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_tables: {
         Row: {
           id: string

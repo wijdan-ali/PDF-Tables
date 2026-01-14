@@ -8,6 +8,9 @@ Run migrations in this order:
 
 1. **001_initial_schema.sql** - Creates tables, indexes, and triggers
 2. **002_rls_policies.sql** - Enables RLS and creates security policies
+3. **003_row_order.sql** - Adds `row_order` for stable row ordering
+4. **004_touch_tables_on_row_change.sql** - Touches `user_tables.updated_at` when rows change
+5. **005_profiles.sql** - Adds `profiles` to store full name + company name (and trigger)
 
 ## Running Migrations
 
@@ -24,7 +27,14 @@ Run migrations in this order:
 supabase db push
 ```
 
-This will run all migrations in order.
+⚠️ Supabase CLI only applies migrations named like `YYYYMMDDHHMMSS_name.sql`.
+
+This repo includes timestamped migrations for Supabase CLI:
+
+- **20260109143329_baseline.sql** - Baseline schema (matches remote migration history)
+- **20260113120000_profiles.sql** - Adds `profiles` (full name + company name) + trigger
+
+If `supabase db push` errors with "Remote migration versions not found", ensure you have a local file with the same version(s) shown in the error output.
 
 ## Migration Details
 

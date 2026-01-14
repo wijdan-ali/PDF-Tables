@@ -88,7 +88,8 @@ export async function GET(request: NextRequest) {
 
     const { data: tables, error } = await supabase
       .from('user_tables')
-      .select('id, table_name, created_at, updated_at')
+      // Include embedded aggregate count of extracted_rows per table (records count).
+      .select('id, table_name, created_at, updated_at, extracted_rows(count)')
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false })
 
@@ -96,7 +97,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(tables)
+    const normalized =
+      (tables ?? []).map((t: any) => {
+        const counts = Array.isArray(t?.extracted_rows) ? t.extracted_rows : []
+        const countVal = counts?.[0]?.count
+        const records_count = typeof countVal === 'number' ? countVal : Number(countVal ?? 0) || 0
+        return {
+          id: t.id,
+          table_name: t.table_name,
+          created_at: t.created_at,
+          updated_at: t.updated_at,
+          records_count,
+        }
+      }) ?? []
+
+    return NextResponse.json(normalized)
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },

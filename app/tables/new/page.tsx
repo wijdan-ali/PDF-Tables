@@ -44,7 +44,11 @@ export default function CreateTablePage() {
       const data = await response.json()
       // Tell the Sidebar (client component living in the /tables layout) to immediately
       // add this table without requiring a full page reload.
-      window.dispatchEvent(new CustomEvent(TABLE_CREATED_EVENT, { detail: { table: data.table } }))
+      window.dispatchEvent(
+        new CustomEvent(TABLE_CREATED_EVENT, {
+          detail: { table: { ...data.table, records_count: 0 } },
+        })
+      )
       router.push(`/tables/${data.table.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create table')
@@ -53,7 +57,7 @@ export default function CreateTablePage() {
   }
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="pl-[100px] pr-8 pb-8 max-w-2xl">
       <h1 className="text-3xl font-semibold text-foreground mb-8">Create New Table</h1>
 
       {error && (

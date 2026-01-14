@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import useSWR from 'swr'
 import type { ExtractedRow } from '@/types/api'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface RecordsCardProps {
   tableId: string
@@ -20,75 +21,12 @@ export default function RecordsCard({ tableId }: RecordsCardProps) {
   const { data: rows } = useSWR<ExtractedRow[]>(rowsKey, fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
-    keepPreviousData: true,
   })
 
   const hasRows = Array.isArray(rows)
-  const target = hasRows ? rows.length : null
-  const [display, setDisplay] = useState(0)
-  const displayRef = useRef(0)
-  const rafRef = useRef<number | null>(null)
+  const count = hasRows ? rows.length : null
   const cardRef = useRef<HTMLDivElement>(null)
   const spotRafRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    displayRef.current = display
-  }, [display])
-
-  useEffect(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
-
-    // If we don't have fresh rows yet (during navigation/loading), keep previous display (no flicker).
-    if (target === null) return
-
-    // If the table truly has 0 rows, show 0 (no animation).
-    if (target === 0) {
-      setDisplay(0)
-      return
-    }
-
-    const startValue = displayRef.current
-    const endValue = target
-    const durationMs = 650
-    const jitterPhase = 0.35 // % of duration with "flicker"
-    const start = performance.now()
-
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / durationMs)
-
-      // Smooth ease in/out (cubic)
-      const easeInOutCubic = (x: number) =>
-        x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2
-
-      const eased = easeInOutCubic(t)
-      const base = startValue + (endValue - startValue) * eased
-
-      // Add a decaying jitter early (no "glitch to 0")
-      let value = base
-      if (t < jitterPhase) {
-        const k = 1 - t / jitterPhase // 1 → 0
-        const amp = Math.max(1, Math.round(Math.abs(endValue - startValue) * 0.18))
-        const jitter = (Math.random() * 2 - 1) * amp * k
-        value = base + jitter
-      }
-
-      // Clamp and commit
-      const next = Math.max(0, Math.min(endValue, Math.round(value)))
-      setDisplay(next)
-
-      if (t >= 1) {
-        setDisplay(endValue)
-        return
-      }
-
-      rafRef.current = requestAnimationFrame(tick)
-    }
-
-    rafRef.current = requestAnimationFrame(tick)
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    }
-  }, [target]) // animate only when the resolved count changes (avoids restarting on navigation while loading)
 
   return (
     <div
@@ -157,7 +95,11 @@ export default function RecordsCard({ tableId }: RecordsCardProps) {
 
         <div className="mt-4 flex items-center gap-3">
           <div className="h-3.5 w-3.5 rounded-full bg-foreground/15" />
-          <div className="text-[40px] leading-none font-bold">{display}</div>
+          {count === null ? (
+            <Skeleton className="h-10 w-24 rounded-xl" />
+          ) : (
+            <div className="text-[40px] leading-none font-bold">{count}</div>
+          )}
         </div>
       </div>
     </div>

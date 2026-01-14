@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label'
 
 export default function LoginPage() {
   const router = useRouter()
+  const [fullName, setFullName] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -25,9 +27,20 @@ export default function LoginPage() {
       const supabase = createClient()
 
       if (isSignUp) {
+        const trimmedFullName = fullName.trim()
+        const trimmedCompanyName = companyName.trim()
+        if (!trimmedFullName) throw new Error('Full name is required')
+        if (!trimmedCompanyName) throw new Error('Company name is required')
+
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            data: {
+              full_name: trimmedFullName,
+              company_name: trimmedCompanyName,
+            },
+          },
         })
 
         if (signUpError) throw signUpError
@@ -75,6 +88,36 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-4">
+              {isSignUp && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="fullName">Full Name</Label>
+                    <Input
+                      id="fullName"
+                      name="fullName"
+                      type="text"
+                      autoComplete="name"
+                      required={isSignUp}
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Full name"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="companyName">Company Name</Label>
+                    <Input
+                      id="companyName"
+                      name="companyName"
+                      type="text"
+                      autoComplete="organization"
+                      required={isSignUp}
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="Company name"
+                    />
+                  </div>
+                </>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -94,7 +137,7 @@ export default function LoginPage() {
                   id="password"
                   name="password"
                   type="password"
-                  autoComplete="current-password"
+                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

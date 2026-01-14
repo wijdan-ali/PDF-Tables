@@ -3,13 +3,14 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useRef } from 'react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { MoreHorizontal, Plus } from 'lucide-react'
 import { PanelLeftClose } from 'lucide-react'
 import ConfirmDialog from '@/app/components/ConfirmDialog'
+import RenameTableModal from '@/app/components/RenameTableModal'
+import { Pencil, Trash2 } from 'lucide-react'
 
 interface Table {
   id: string
@@ -25,6 +26,7 @@ interface SidebarProps {
 const TABLE_NAME_UPDATED_EVENT = 'pdf-tables:table-name-updated'
 const TABLE_TOUCHED_EVENT = 'pdf-tables:table-touched'
 const TABLE_CREATED_EVENT = 'pdf-tables:table-created'
+const TABLE_DELETED_EVENT = 'pdf-tables:table-deleted'
 const SIDEBAR_TABLES_CACHE_KEY = 'pdf-tables:sidebar-tables-cache'
 const AI_PROVIDER_STORAGE_KEY = 'pdf-tables:ai-provider'
 type AiProvider = 'chatpdf' | 'gemini'
@@ -52,6 +54,14 @@ function readTablesCache(): Table[] {
   }
 }
 
+function writeTablesCache(next: Table[]) {
+  try {
+    sessionStorage.setItem(SIDEBAR_TABLES_CACHE_KEY, JSON.stringify(next))
+  } catch {
+    // ignore
+  }
+}
+
 export default function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -68,11 +78,15 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
       return 'chatpdf'
     }
   })
+  const [userId, setUserId] = useState<string | null>(null)
+  const didInitAiProviderRef = useRef(false)
   const [openMenu, setOpenMenu] = useState<{ tableId: string; left: number; top: number } | null>(null)
   const [confirmDeleteTableId, setConfirmDeleteTableId] = useState<string | null>(null)
+  const [renameTableId, setRenameTableId] = useState<string | null>(null)
   const [isDeletingTable, setIsDeletingTable] = useState(false)
   const shellRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number | null>(null)
+  const didHydrateFromServerRef = useRef(false)
 
   useEffect(() => {
     try {
@@ -81,6 +95,18 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
       // ignore
     }
   }, [aiProvider])
+
+  // Keep AI provider synced to DB (fallback remains localStorage for resiliency).
+  useEffect(() => {
+    if (!didInitAiProviderRef.current) return
+    if (!userId) return
+
+    const supabase = createClient()
+    void supabase.from('user_settings').upsert(
+      { user_id: userId, ai_provider: aiProvider },
+      { onConflict: 'user_id' }
+    )
+  }, [aiProvider, userId])
 
   useEffect(() => {
     if (!openMenu) return
@@ -95,6 +121,26 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
     return () => document.removeEventListener('mousedown', onDown)
   }, [openMenu])
 
+  // If a table is deleted from elsewhere (e.g. /tables card menu), remove it here too.
+  useEffect(() => {
+    const onDeleted = (evt: Event) => {
+      const e = evt as CustomEvent<{ tableId?: string }>
+      const tableId = e.detail?.tableId
+      if (!tableId) return
+      setTables((prev) => {
+        const next = prev.filter((t) => t.id !== tableId)
+        // Persist deletion immediately so a refresh doesn't re-show stale cached items.
+        writeTablesCache(next)
+        return next
+      })
+      if (openMenu?.tableId === tableId) setOpenMenu(null)
+      if (confirmDeleteTableId === tableId) setConfirmDeleteTableId(null)
+      if (renameTableId === tableId) setRenameTableId(null)
+    }
+    window.addEventListener(TABLE_DELETED_EVENT, onDeleted as EventListener)
+    return () => window.removeEventListener(TABLE_DELETED_EVENT, onDeleted as EventListener)
+  }, [openMenu?.tableId, confirmDeleteTableId, renameTableId])
+
   const deleteTable = async (tableId: string) => {
     if (isDeletingTable) return
     setIsDeletingTable(true)
@@ -103,9 +149,14 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.error || 'Failed to delete table')
 
-      setTables((prev) => prev.filter((t) => t.id !== tableId))
+      setTables((prev) => {
+        const next = prev.filter((t) => t.id !== tableId)
+        writeTablesCache(next)
+        return next
+      })
       setOpenMenu(null)
       setConfirmDeleteTableId(null)
+      window.dispatchEvent(new CustomEvent(TABLE_DELETED_EVENT, { detail: { tableId } }))
 
       // If the user is currently viewing the deleted table, take them back to /tables.
       if (pathname === `/tables/${tableId}`) {
@@ -127,6 +178,29 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
         router.push('/login')
         return
       }
+      setUserId(user.id)
+
+      // Try DB preference first, fallback to localStorage.
+      try {
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('ai_provider')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        const pref = settings?.ai_provider
+        if (pref === 'gemini' || pref === 'chatpdf') {
+          setAiProvider(pref)
+          try {
+            localStorage.setItem(AI_PROVIDER_STORAGE_KEY, pref)
+          } catch {
+            // ignore
+          }
+        }
+      } finally {
+        // From this point on, changes should be persisted to DB.
+        didInitAiProviderRef.current = true
+      }
 
       const { data, error } = await supabase
         .from('user_tables')
@@ -136,6 +210,8 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
       if (!error && data) {
         setTables(data)
       }
+      // From this point, it's safe to overwrite cache even with an empty list.
+      didHydrateFromServerRef.current = true
       setLoading(false)
     }
 
@@ -143,14 +219,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
   }, [router])
 
   // Keep cache in sync with the latest in-memory ordering to avoid flicker on route transitions.
-  // Important: don't overwrite cache with an empty list on mount.
+  // Important: don't overwrite cache with an empty list on the very first mount
+  // (before we know the server truth).
   useEffect(() => {
-    if (!tables.length) return
-    try {
-      sessionStorage.setItem(SIDEBAR_TABLES_CACHE_KEY, JSON.stringify(tables))
-    } catch {
-      // ignore
-    }
+    if (!didHydrateFromServerRef.current && !tables.length) return
+    writeTablesCache(tables)
   }, [tables])
 
   useEffect(() => {
@@ -291,9 +364,23 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
             <div className="flex items-center justify-between gap-3">
               <Link
                 href="/tables"
-                className="font-serif text-[25px] leading-none font-normal tracking-tight text-sidebar-foreground/95 hover:text-sidebar-foreground transition-colors"
+                className="flex items-center gap-[3.0px] font-serif text-[24px] leading-none font-normal tracking-tight text-sidebar-foreground/95 hover:text-sidebar-foreground transition-colors"
               >
-                Clariparse
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-10 w-10 bg-primary"
+                  style={{
+                    WebkitMaskImage: 'url(/base_logo.png)',
+                    WebkitMaskRepeat: 'no-repeat',
+                    WebkitMaskPosition: 'center',
+                    WebkitMaskSize: 'contain',
+                    maskImage: 'url(/base_logo.png)',
+                    maskRepeat: 'no-repeat',
+                    maskPosition: 'center',
+                    maskSize: 'contain',
+                  }}
+                />
+                clariparse
               </Link>
               <div className="flex items-center gap-2">
                 <ThemeToggle className="px-2 py-1.5" />
@@ -335,7 +422,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
               <div className="sidebar-scroll sidebar-scroll-fade h-full overflow-y-auto pr-1 pb-6">
               {/* Only show Loading when we truly have no cached tables */}
               {loading && tables.length === 0 ? (
-                <div className="px-2 py-2 text-sm text-sidebar-foreground/70">Loading...</div>
+                <div className="px-2 py-2 space-y-2">
+                  <div className="h-4 w-28 rounded-lg bg-sidebar-accent/70" />
+                  <div className="h-4 w-36 rounded-lg bg-sidebar-accent/70" />
+                  <div className="h-4 w-24 rounded-lg bg-sidebar-accent/70" />
+                </div>
               ) : tables.length === 0 ? (
                 <div className="px-2 py-2 text-sm text-sidebar-foreground/70">No tables yet</div>
               ) : (
@@ -444,12 +535,26 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
+              setRenameTableId(openMenu.tableId)
+              setOpenMenu(null)
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+          >
+            <Pencil className="h-4 w-4 opacity-80" />
+            Rename…
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
               setConfirmDeleteTableId(openMenu.tableId)
               setOpenMenu(null)
             }}
-            className="w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+            className="w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 flex items-center gap-2"
           >
-            Delete table…
+            <Trash2 className="h-4 w-4" />
+            Delete
           </button>
         </div>
       )}
@@ -469,6 +574,34 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
         onConfirm={() => {
           if (!confirmDeleteTableId) return
           void deleteTable(confirmDeleteTableId)
+        }}
+      />
+
+      <RenameTableModal
+        isOpen={renameTableId !== null}
+        tableId={renameTableId}
+        initialName={tables.find((t) => t.id === renameTableId)?.table_name ?? 'Untitled'}
+        onClose={() => setRenameTableId(null)}
+        onRenamed={({ tableId, table_name, updated_at }) => {
+          // Update sidebar state immediately
+          setTables((prev) => {
+            const next = prev.map((t) =>
+              t.id === tableId ? { ...t, table_name, updated_at: updated_at ?? new Date().toISOString() } : t
+            )
+            next.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0))
+            return next
+          })
+          // Notify rest of app
+          window.dispatchEvent(
+            new CustomEvent(TABLE_NAME_UPDATED_EVENT, {
+              detail: { tableId, table_name, updated_at: updated_at ?? new Date().toISOString() },
+            })
+          )
+          window.dispatchEvent(
+            new CustomEvent(TABLE_TOUCHED_EVENT, {
+              detail: { tableId, updated_at: updated_at ?? new Date().toISOString() },
+            })
+          )
         }}
       />
     </aside>

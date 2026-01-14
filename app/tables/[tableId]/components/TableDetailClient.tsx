@@ -30,7 +30,7 @@ export default function TableDetailClient({ table: initialTable }: TableDetailCl
   }
 
   return (
-    <div className="pt-8 pb-8 max-w-full">
+    <div className="pb-8 max-w-full">
       {/* Keep existing padding for header + upload */}
       <div className="pl-[100px] pr-8">
       {/* Table Name - Editable */}
