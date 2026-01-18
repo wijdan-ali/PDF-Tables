@@ -1,9 +1,8 @@
 'use client'
 
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import type { ExtractedRow } from '@/types/api'
-import { Skeleton } from '@/components/ui/skeleton'
 import GrainOverlay from '@/components/GrainOverlay'
 
 interface RecordsCardProps {
@@ -26,8 +25,13 @@ export default function RecordsCard({ tableId }: RecordsCardProps) {
 
   const hasRows = Array.isArray(rows)
   const count = hasRows ? rows.length : null
+  const [hasResolvedCount, setHasResolvedCount] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const spotRafRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (count !== null) setHasResolvedCount(true)
+  }, [count])
 
   return (
     <div
@@ -82,9 +86,15 @@ export default function RecordsCard({ tableId }: RecordsCardProps) {
         <div className="mt-6 flex items-center gap-3">
           <div className="h-3.5 w-3.5 rounded-full bg-foreground/15" />
           {count === null ? (
-            <Skeleton className="h-10 w-24 rounded-xl" />
+            // Reserve exact space; no skeleton (prevents layout jump).
+            <div className="h-[40px] w-24" />
           ) : (
-            <div className="text-[40px] leading-none font-bold">{count}</div>
+            <div
+              key={hasResolvedCount ? String(count) : 'count'}
+              className="text-[40px] leading-none font-bold animate-in fade-in slide-in-from-bottom-1 duration-200"
+            >
+              {count}
+            </div>
           )}
         </div>
       </div>

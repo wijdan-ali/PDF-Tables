@@ -35,11 +35,13 @@ export default function TableDetailClient({ table: initialTable }: TableDetailCl
       <div className="pl-[100px] pr-8">
       {/* Table Name - Editable */}
       <div className="mb-8">
-        <EditableTableName
-          tableId={table.id}
-          initialName={tableName}
-          onUpdate={handleTableNameUpdate}
-        />
+        <div className="animate-in fade-in slide-in-from-bottom-1 duration-200">
+          <EditableTableName
+            tableId={table.id}
+            initialName={tableName}
+            onUpdate={handleTableNameUpdate}
+          />
+        </div>
       </div>
 
       {/* Upload File Card */}

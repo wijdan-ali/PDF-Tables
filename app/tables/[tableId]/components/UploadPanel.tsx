@@ -19,11 +19,16 @@ const UPLOAD_GRAIN_BRIGHTNESS = 1.05
 interface UploadPanelProps {
   tableId: string
   columnsCount?: number
+  /**
+   * When the table detail page is still bootstrapping (e.g. hard refresh),
+   * render the full card but keep it non-interactive without showing errors.
+   */
+  isBootstrapping?: boolean
 }
 
 type UploadState = 'idle' | 'uploading' | 'extracting' | 'failed'
 
-export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelProps) {
+export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping = false }: UploadPanelProps) {
   const { mutate } = useSWRConfig()
   const [file, setFile] = useState<File | null>(null)
   const [state, setState] = useState<UploadState>('idle')
@@ -96,6 +101,10 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
   }, [rows, rowId, state])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isBootstrapping) {
+      e.currentTarget.value = ''
+      return
+    }
     if (columnsCount === 0) {
       // Safety: if somehow a file gets selected while columns are 0, reject it.
       e.currentTarget.value = ''
@@ -119,6 +128,8 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
   const handleUpload = async (selected?: File) => {
     const activeFile = selected ?? file
     if (!activeFile) return
+
+    if (isBootstrapping) return
 
     // Validate columns exist before upload
     if (columnsCount === 0) {
@@ -315,7 +326,7 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
         className={`relative w-[380px] h-[145px] max-w-full overflow-hidden rounded-[22px] border border-border bg-card text-card-foreground px-5 pt-6 pb-5 shadow-md ${
           state === 'uploading' || state === 'extracting'
             ? 'opacity-60'
-            : columnsCount === 0
+            : !isBootstrapping && columnsCount === 0
               ? 'cursor-not-allowed'
               : 'transition-[border-color,transform] duration-200 ease-out hover:border-ring/40'
         }`}
@@ -351,6 +362,7 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
           <button
             type="button"
             onClick={() => {
+              if (isBootstrapping) return
               if (columnsCount === 0) {
                 setError('Please create at least one column before uploading a PDF. Click "Add Column" to get started.')
                 setState('failed')
@@ -358,7 +370,7 @@ export default function UploadPanel({ tableId, columnsCount = 0 }: UploadPanelPr
               }
               inputRef.current?.click()
             }}
-            disabled={state === 'uploading' || state === 'extracting' || columnsCount === 0}
+            disabled={state === 'uploading' || state === 'extracting' || isBootstrapping || columnsCount === 0}
             className="mt-4 self-start inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary text-primary-foreground px-3.5 py-2 text-[12px] font-medium transition-[transform,box-shadow,opacity,filter] duration-200 ease-out hover:-translate-y-[1px] hover:shadow-md hover:brightness-[1.03] active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Choose PDF

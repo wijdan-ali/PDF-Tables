@@ -45,7 +45,7 @@ export default function TableDetailRouteShell() {
   // Only show loading skeleton when we truly don't have data for this table yet.
   // SWR will serve cached data immediately for tables previously visited in this session.
   if (!data) {
-    return <TableDetailSkeleton />
+    return <TableDetailSkeleton tableId={tableId} />
   }
 
   if (data.error) {
@@ -61,7 +61,8 @@ export default function TableDetailRouteShell() {
     updated_at: data.updated_at,
   }
 
-  return <TableDetailClient table={tableData} />
+  // Key by table id so the title animation plays on table switches, and internal UI state stays isolated per table.
+  return <TableDetailClient key={tableData.id} table={tableData} />
 }
 
 

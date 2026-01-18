@@ -1071,14 +1071,62 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
   }
 
   if (!rowsList) {
+    const skeletonColumns = [...columns].sort((a, b) => a.order - b.order)
     return (
-      <div className="space-y-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="rounded-xl border border-border bg-card p-4">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="mt-3 h-4 w-28" />
+      <div className="border border-border border-x-0 border-t-0 border-b-0 rounded-b-lg rounded-t-none overflow-hidden">
+        <div className="overflow-x-auto">
+          <div className="min-w-max">
+            {/* Header skeleton (match table chrome) */}
+            <div className="bg-background">
+              <div className="flex">
+                <div className="flex-shrink-0 w-24 px-3 py-2" />
+
+                <div className="flex border-t border-border border-b-2 border-border pl-3">
+                  {skeletonColumns.map((column) => (
+                    <div
+                      key={column.key}
+                      className="flex-shrink-0 px-3 py-2 border-r border-border"
+                      style={{ width: `${columnWidths[column.key] ?? DEFAULT_COL_WIDTH}px` }}
+                    >
+                      <Skeleton className="h-4 w-32 rounded-lg" />
+                    </div>
+                  ))}
+                  <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-border flex items-center">
+                    <Skeleton className="h-4 w-10 rounded-lg" />
+                  </div>
+                </div>
+
+                {/* Add Column area placeholder */}
+                <div className="flex-shrink-0 px-3 py-2">
+                  <Skeleton className="h-8 w-28 rounded-xl" />
+                </div>
+              </div>
+            </div>
+
+            {/* Body skeleton (match row height due to PDF thumbnail) */}
+            <div className="bg-background">
+              {[0, 1, 2].map((rowIdx) => (
+                <div key={rowIdx} className="flex relative bg-background">
+                  <div className="flex-shrink-0 w-24 px-3 flex items-center" />
+                  <div className={`flex pl-3 ${rowIdx === 0 ? '' : 'border-t border-border'}`}>
+                    {skeletonColumns.map((column) => (
+                      <div
+                        key={column.key}
+                        className="flex-shrink-0 px-3 py-2 border-r border-border flex items-center"
+                        style={{ width: `${columnWidths[column.key] ?? DEFAULT_COL_WIDTH}px` }}
+                      >
+                        <Skeleton className="h-4 w-[70%] rounded-lg" />
+                      </div>
+                    ))}
+                    <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-border flex items-center">
+                      <Skeleton className="h-24 w-24 rounded-md" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
+        </div>
       </div>
     )
   }
@@ -1132,6 +1180,25 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
   if (rowsList.length === 0) {
     return (
       <>
+        {/* Floating column ghost (visual only) — keep drag visuals consistent even when there are no rows */}
+        {ghostColumn && colGhostRect && colDragPointer && colGhostOffsetRef.current && (
+          <div
+            className="pointer-events-none fixed z-[110] rounded-md border border-border bg-card/80 text-card-foreground shadow-lg backdrop-blur-md"
+            style={{
+              left: colDragPointer.x - colGhostOffsetRef.current.x,
+              top: colGhostRect.top,
+              width: colGhostRect.width,
+              height: colGhostRect.height,
+              opacity: 0.75,
+              transform: 'translateZ(0)',
+            }}
+          >
+            <div className="h-full px-3 py-2 flex items-center">
+              <div className="text-sm font-semibold text-foreground truncate">{ghostColumn.label}</div>
+            </div>
+          </div>
+        )}
+
         <div className="border border-border border-x-0 border-t-0 border-b-0 rounded-b-lg rounded-t-none overflow-hidden">
           <div className="overflow-x-auto">
             <div className="min-w-max">
@@ -1148,7 +1215,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                           colHeaderRefs.current[column.key] = el
                         }}
                         className={[
-                          'flex-shrink-0 px-3 py-2 border-r border-border relative group/colhead cell-hover-fade transition-colors hover:bg-muted/30',
+                          'flex items-center flex-shrink-0 px-3 py-2 border-r border-border flex items-center relative group/colhead cell-hover-fade transition-colors hover:bg-muted/30',
                           draggingColKey === column.key
                             ? colDragHasMoved
                               ? 'opacity-0 pointer-events-none select-none'
@@ -1206,7 +1273,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                         </div>
                       </div>
                     ))}
-                    <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-border">
+                    <div className="flex-shrink-0 w-[120px] px-3 py-2 border-l border-border flex items-center">
                       <span className="text-sm font-medium text-foreground">PDF</span>
                     </div>
                   </div>
@@ -1344,7 +1411,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                           colHeaderRefs.current[column.key] = el
                         }}
                         className={[
-                          'flex-shrink-0 px-3 py-2 border-r border-border relative group/colhead cell-hover-fade transition-colors hover:bg-muted/30',
+                          'flex items-center flex-shrink-0 px-3 py-2 border-r border-border relative group/colhead cell-hover-fade transition-colors hover:bg-muted/30',
                           draggingColKey === column.key
                             ? colDragHasMoved
                               ? 'opacity-0 pointer-events-none select-none'
@@ -1648,7 +1715,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
       <ConfirmDialog
         open={confirmDeleteColumnKey !== null}
         title="Delete column?"
-        description="This will remove the column from the table. Existing extracted data will remain in the database but will no longer be shown."
+        description="This will permanently delete the column and remove its stored values from all rows in the database. This cannot be undone."
         confirmText="Delete"
         cancelText="Cancel"
         destructive

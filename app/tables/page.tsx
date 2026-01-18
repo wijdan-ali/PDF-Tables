@@ -331,10 +331,13 @@ export default function TablesPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, idx) => (
-            <div key={idx} className="rounded-xl border border-border bg-card p-6">
-              <Skeleton className="h-5 w-40" />
-              <Skeleton className="mt-3 h-4 w-28" />
-            </div>
+            <Card key={idx}>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-5 w-40" />
+                <Skeleton className="mt-2 h-4 w-28" />
+              </CardHeader>
+              <CardContent />
+            </Card>
           ))}
         </div>
       ) : !tables || tables.length === 0 ? (

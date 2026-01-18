@@ -67,6 +67,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     const body: UpdateTableRequest = await request.json()
     const updateData: any = {}
+    let removedColumnKeys: string[] = []
 
     if (body.table_name) {
       updateData.table_name = body.table_name
@@ -129,6 +130,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       }
 
       updateData.columns = columns
+
+      // Identify removed keys so we can remove their data from extracted_rows.data.
+      const nextKeySet = new Set<string>(columns.map((c) => c.key).filter(Boolean))
+      removedColumnKeys = Array.from(existingKeySet).filter((k) => !nextKeySet.has(k))
     }
 
     updateData.updated_at = new Date().toISOString()
@@ -142,6 +147,21 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // If columns were removed, remove those keys from all extracted rows in this table.
+    // This enforces "delete column => delete its stored data from the database".
+    if (removedColumnKeys.length > 0) {
+      const { error: rpcErr } = await (supabase as any).rpc('remove_extracted_row_keys', {
+        p_table_id: params.tableId,
+        p_keys: removedColumnKeys,
+      })
+      if (rpcErr) {
+        return NextResponse.json(
+          { error: rpcErr.message || 'Failed to remove deleted column data from rows' },
+          { status: 500 }
+        )
+      }
     }
 
     return NextResponse.json(table)
