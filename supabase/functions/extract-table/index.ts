@@ -330,6 +330,36 @@ serve(async (req) => {
       return json({ status: 'extracting' } satisfies ExtractResponse, { headers: corsHeaders })
     }
 
+    // Enforce plan limits BEFORE starting extraction.
+    // Counting semantics: only successful extractions count, but we still gate before work begins.
+    const { data: canExtract, error: canExtractErr } = await userClient.rpc('can_extract_document', {
+      p_user_id: userId,
+    })
+    if (canExtractErr) {
+      return json({ error: canExtractErr.message }, { status: 500, headers: corsHeaders })
+    }
+    if (!canExtract) {
+      const { data: ent } = await userClient
+        .from('entitlements')
+        .select('tier, trial_expires_at, docs_limit_monthly, docs_limit_trial')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      let msg = 'Document limit reached. Upgrade to continue.'
+      if (ent?.tier === 'starter') {
+        msg = `Starter plan limit reached (${ent.docs_limit_monthly ?? 200} documents/month). Upgrade to Professional to unlock unlimited documents and batch uploads.`
+      } else if (ent?.tier === 'pro_trial') {
+        const expired = ent.trial_expires_at ? Date.parse(ent.trial_expires_at) <= Date.now() : true
+        msg = expired
+          ? 'Your 7-day trial has ended. Upgrade to Professional to continue extracting.'
+          : `Trial limit reached (${ent.docs_limit_trial ?? 50} documents). Upgrade to Professional to continue extracting.`
+      }
+
+      // Best-effort: mark row as failed so the UI surfaces the message.
+      await userClient.from('extracted_rows').update({ status: 'failed', error: msg }).eq('id', rowId)
+      return json({ status: 'failed', error: msg } satisfies ExtractResponse, { headers: corsHeaders })
+    }
+
     // Move to extracting early (UI + polling) with a best-effort concurrency guard.
     // If another invocation already flipped the row to extracting, this update will no-op.
     const eligibleStatuses: Array<'uploaded' | 'failed'> = ['uploaded', 'failed']

@@ -1,15 +1,24 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+function isInternalPath(p: string | null): p is string {
+  return typeof p === 'string' && p.startsWith('/') && !p.startsWith('//')
+}
+
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const returnTo = useMemo(() => {
+    const v = searchParams.get('returnTo')
+    return isInternalPath(v) ? v : '/tables'
+  }, [searchParams])
   const [fullName, setFullName] = useState('')
   const [companyName, setCompanyName] = useState('')
   const [email, setEmail] = useState('')
@@ -62,7 +71,7 @@ export default function LoginPage() {
         if (signInError) throw signInError
       }
 
-      router.push('/tables')
+      router.push(returnTo)
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed')

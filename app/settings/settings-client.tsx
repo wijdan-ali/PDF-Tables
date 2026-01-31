@@ -2,12 +2,13 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
-import { LifeBuoy, LogOut, Save, Shield, User } from 'lucide-react'
+import { CreditCard, LifeBuoy, LogOut, Save, Shield, User } from 'lucide-react'
 import { PROFILE_UPDATED_EVENT } from '@/lib/constants/events'
 import { FIRST_NAME_CACHE_KEY, USER_INITIAL_CACHE_KEY } from '@/lib/constants/storage'
 
@@ -53,8 +54,43 @@ export default function SettingsClient({
   const [isSigningOut, setIsSigningOut] = useState(false)
 
   const profileRef = useRef<HTMLDivElement>(null)
+  const billingRef = useRef<HTMLDivElement>(null)
   const securityRef = useRef<HTMLDivElement>(null)
   const supportRef = useRef<HTMLDivElement>(null)
+
+  const { data: billingMe, mutate: mutateBilling } = useSWR(
+    '/api/billing/me',
+    async (url: string) => {
+      const res = await fetch(url)
+      if (!res.ok) return null
+      return (await res.json().catch(() => null)) as any
+    },
+    { revalidateOnFocus: false }
+  )
+
+  const [isOpeningPortal, setIsOpeningPortal] = useState(false)
+  const [billingError, setBillingError] = useState<string | null>(null)
+
+  const openBillingPortal = async () => {
+    if (isOpeningPortal) return
+    setBillingError(null)
+    setIsOpeningPortal(true)
+    try {
+      const res = await fetch('/api/billing/portal-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: '/settings' }),
+      })
+      const data = (await res.json().catch(() => ({}))) as any
+      if (!res.ok) throw new Error(data?.error || 'Failed to open billing portal')
+      const url = typeof data?.url === 'string' ? data.url : ''
+      if (!url) throw new Error('Missing portal URL')
+      window.location.href = url
+    } catch (e) {
+      setBillingError(e instanceof Error ? e.message : 'Failed to open billing portal')
+      setIsOpeningPortal(false)
+    }
+  }
 
   const scrollTo = (ref: React.RefObject<HTMLDivElement>) => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -189,6 +225,14 @@ export default function SettingsClient({
           </button>
           <button
             type="button"
+            onClick={() => scrollTo(billingRef)}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground"
+          >
+            <CreditCard className="h-4 w-4 opacity-80" />
+            Billing
+          </button>
+          <button
+            type="button"
             onClick={() => scrollTo(securityRef)}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground"
           >
@@ -272,6 +316,76 @@ export default function SettingsClient({
                 <Save className="h-4 w-4" />
                 {isSavingProfile ? 'Saving…' : 'Save'}
               </Button>
+            </CardFooter>
+          </Card>
+        </div>
+
+        <div ref={billingRef} className="scroll-mt-24">
+          {billingError && (
+            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {billingError}
+            </div>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Billing</CardTitle>
+              <CardDescription>Manage your plan, trial, and usage limits.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div>
+                <span className="font-medium">Current plan:</span>{' '}
+                <span className="text-muted-foreground">{billingMe?.entitlement?.tier ?? 'free'}</span>
+              </div>
+
+              {billingMe?.entitlement?.tier === 'starter' && (
+                <div className="text-muted-foreground">
+                  {Number(billingMe?.usage?.monthly?.docs_extracted ?? 0)} / {Number(billingMe?.entitlement?.docs_limit_monthly ?? 200)} documents used this month.
+                </div>
+              )}
+
+              {billingMe?.entitlement?.tier === 'pro_trial' && (
+                <div className="text-muted-foreground">
+                  {Number(billingMe?.usage?.trial?.docs_extracted ?? 0)} / {Number(billingMe?.entitlement?.docs_limit_trial ?? 50)} documents used in trial. Trial ends{' '}
+                  {billingMe?.entitlement?.trial_expires_at ? new Date(billingMe.entitlement.trial_expires_at).toLocaleDateString() : 'soon'}.
+                </div>
+              )}
+
+              {billingMe?.entitlement?.tier === 'pro' && (
+                <div className="text-muted-foreground">Unlimited documents. Batch upload enabled.</div>
+              )}
+            </CardContent>
+            <CardFooter className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  void mutateBilling()
+                }}
+              >
+                Refresh
+              </Button>
+
+              {(billingMe?.entitlement?.tier === 'starter' || billingMe?.entitlement?.tier === 'pro') && (
+                <Button type="button" onClick={() => void openBillingPortal()} disabled={isOpeningPortal}>
+                  {isOpeningPortal ? 'Opening…' : 'Manage billing'}
+                </Button>
+              )}
+
+              {billingMe?.entitlement?.tier !== 'pro' && (
+                <Button
+                  type="button"
+                  onClick={() => router.push('/start?intent=checkout&plan=pro&interval=month&returnTo=/tables')}
+                >
+                  Upgrade to Professional
+                </Button>
+              )}
+
+              {billingMe?.entitlement?.tier === 'free' && (
+                <Button type="button" variant="outline" onClick={() => router.push('/start?intent=trial_pro&returnTo=/tables')}>
+                  Start free trial
+                </Button>
+              )}
             </CardFooter>
           </Card>
         </div>

@@ -33,6 +33,18 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       )
     }
 
+    // Optional fast-fail (actual enforcement is inside the Edge Function as well).
+    const { data: canExtract, error: canExtractErr } = await supabase.rpc('can_extract_document', { p_user_id: user.id })
+    if (canExtractErr) {
+      return NextResponse.json({ error: canExtractErr.message }, { status: 500 })
+    }
+    if (!canExtract) {
+      return NextResponse.json(
+        { error: 'Document limit reached. Upgrade to continue.' },
+        { status: 402 }
+      )
+    }
+
     // Back-compat proxy: delegate to Supabase Edge Function so Vercel never needs AI secrets.
     const {
       data: { session },

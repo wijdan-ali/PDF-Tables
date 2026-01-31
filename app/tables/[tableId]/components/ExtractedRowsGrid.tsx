@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
 import { useRows } from './useRows'
 import { usePersistedRowOrder } from './usePersistedRowOrder'
+import ExtractingInlineIndicator from './ExtractingInlineIndicator'
 
 interface ExtractedRowsGridProps {
   tableId: string
@@ -1658,8 +1659,19 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
                               className="cell-text text-sm text-foreground pr-6 min-h-[1.5rem] overflow-x-auto scrollbar-hide whitespace-pre-wrap break-words"
                               style={{ lineHeight: '1.5rem', padding: 0, margin: 0 }}
                         >
-                              {isPending && !hasValue ? (
-                                <Skeleton className="h-4 w-24 rounded-lg" />
+                              {row.status === 'failed' && !hasValue ? (
+                                <ExtractingInlineIndicator
+                                  variant="failed"
+                                  text="failed"
+                                  title={row.error || 'Extraction failed'}
+                                  loader="none"
+                                />
+                              ) : isPending && !hasValue ? (
+                                <ExtractingInlineIndicator
+                                  seed={`${row.id}:${column.key}`}
+                                  loader="threeDots"
+                                  rotate
+                                />
                               ) : (
                                 displayValue
                               )}
