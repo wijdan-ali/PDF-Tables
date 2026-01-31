@@ -293,7 +293,21 @@ export type Database = {
       }
     }
     Views: { [_ in never]: never }
-    Functions: { [_ in never]: never }
+    Functions: {
+      claim_pro_trial: {
+        Args: Record<string, never>
+        Returns: {
+          tier: string
+          trial_expires_at: string | null
+          docs_limit_trial: number | null
+          batch_enabled: boolean
+        }[]
+      }
+      can_extract_document: {
+        Args: { p_user_id: string }
+        Returns: boolean
+      }
+    }
     Enums: { [_ in never]: never }
     CompositeTypes: { [_ in never]: never }
   }
