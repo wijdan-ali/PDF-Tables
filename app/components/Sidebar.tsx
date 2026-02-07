@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { MoreHorizontal, Plus } from 'lucide-react'
 import { PanelLeftClose } from 'lucide-react'
+import useSWR from 'swr'
 import ConfirmDialog from '@/app/components/ConfirmDialog'
 import RenameTableModal from '@/app/components/RenameTableModal'
 import { Pencil, Trash2 } from 'lucide-react'
@@ -19,7 +20,7 @@ import {
   TABLE_TOUCHED_EVENT,
 } from '@/lib/constants/events'
 import { SIDEBAR_TABLES_CACHE_KEY } from '@/lib/constants/storage'
-import { useAiProvider } from '@/lib/hooks/useUserSettings'
+import { Progress } from '@/components/ui/progress'
 
 interface Table {
   id: string
@@ -31,8 +32,6 @@ interface SidebarProps {
   collapsed?: boolean
   onToggleCollapsed?: () => void
 }
-
-type AiProvider = 'chatpdf' | 'gemini'
 
 // Tune these to control the extra grain layer (separate from Silk's noiseIntensity).
 const SIDEBAR_GRAIN_OPACITY = 1.0
@@ -72,7 +71,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
   const [loading, setLoading] = useState<boolean>(() =>
     typeof window === 'undefined' ? true : readTablesCache().length === 0
   )
-  const { aiProvider, setAiProvider } = useAiProvider()
   const [openMenu, setOpenMenu] = useState<{ tableId: string; left: number; top: number } | null>(null)
   const [confirmDeleteTableId, setConfirmDeleteTableId] = useState<string | null>(null)
   const [renameTableId, setRenameTableId] = useState<string | null>(null)
@@ -167,6 +165,28 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
 
     fetchTables()
   }, [router])
+
+  const { data: billingMe } = useSWR(
+    '/api/billing/me',
+    async (url: string) => {
+      const res = await fetch(url)
+      if (!res.ok) return null
+      return (await res.json().catch(() => null)) as any
+    },
+    { revalidateOnFocus: false }
+  )
+
+  const tier = typeof billingMe?.entitlement?.tier === 'string' ? billingMe.entitlement.tier : 'free'
+  const monthlyUsed = Number(billingMe?.usage?.monthly?.docs_extracted ?? 0)
+  const monthlyLimit = Number(billingMe?.entitlement?.docs_limit_monthly ?? 200)
+  const trialUsed = Number(billingMe?.usage?.trial?.docs_extracted ?? 0)
+  const trialLimit = Number(billingMe?.entitlement?.docs_limit_trial ?? 50)
+
+  const docsRemaining =
+    tier === 'starter' ? Math.max(0, monthlyLimit - monthlyUsed) : tier === 'pro_trial' ? Math.max(0, trialLimit - trialUsed) : null
+  const docsLimit = tier === 'starter' ? monthlyLimit : tier === 'pro_trial' ? trialLimit : null
+  const percentRemaining =
+    tier === 'starter' && docsLimit ? (docsRemaining! / docsLimit) * 100 : tier === 'pro_trial' && docsLimit ? (docsRemaining! / docsLimit) * 100 : tier === 'pro' ? 100 : 0
 
   // Keep cache in sync with the latest in-memory ordering to avoid flicker on route transitions.
   // Important: don't overwrite cache with an empty list on the very first mount
@@ -344,7 +364,12 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
 
           <div className="pt-2 pb-5">
             <Link
-              href="/tables/new"
+              href={tier === 'free' ? '/billing' : '/tables/new'}
+              onClick={(e) => {
+                if (tier !== 'free') return
+                e.preventDefault()
+                router.push('/billing')
+              }}
               className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-primary/35 bg-primary text-primary-foreground px-4 py-3 text-[15px] font-medium shadow-sm backdrop-blur-md transition-[background-color,border-color,transform,box-shadow,filter] duration-200 ease-out hover:-translate-y-[1px] hover:shadow-md hover:brightness-[1.03] active:translate-y-0 active:brightness-[0.99] dark:border-primary/40"
             >
               {/* subtle glass highlight */}
@@ -428,40 +453,39 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
             </div>
           </div>
 
-          {/* Provider toggle (bottom) */}
+          {/* Plan usage (bottom) */}
           <div className="relative z-20 -mx-5 px-5 pt-5 bg-transparent">
             <div className="h-px w-full bg-gradient-to-r from-transparent from-[0.1px] via-sidebar-foreground/20 to-transparent to-[calc(100%-0.1px)]" />
             <div className="mt-4">
               <div className="px-1 pb-2 text-[12px] font-semibold tracking-[0.18em] text-sidebar-foreground/60">
-                MODEL
+                DOCUMENTS
               </div>
-              <div className="inline-flex w-full rounded-xl border border-border bg-card/70 p-1 shadow-sm backdrop-blur-md">
-                <button
-                  type="button"
-                  onClick={() => setAiProvider('chatpdf')}
-                  className={[
-                    'flex-1 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
-                    aiProvider === 'chatpdf'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-foreground/80 hover:bg-muted/40',
-                  ].join(' ')}
-                  aria-pressed={aiProvider === 'chatpdf'}
-                >
-                  ChatPDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAiProvider('gemini')}
-                  className={[
-                    'flex-1 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
-                    aiProvider === 'gemini'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-foreground/80 hover:bg-muted/40',
-                  ].join(' ')}
-                  aria-pressed={aiProvider === 'gemini'}
-                >
-                  Gemini
-                </button>
+
+              <div className="rounded-xl border border-border bg-card/70 px-3.5 py-3 shadow-sm backdrop-blur-md">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[12px] font-medium text-foreground/85">
+                    {tier === 'starter'
+                      ? `${docsRemaining} left this month`
+                      : tier === 'pro_trial'
+                        ? `${docsRemaining} left in trial`
+                        : tier === 'pro'
+                          ? 'Unlimited'
+                          : 'No active plan'}
+                  </div>
+                  {tier === 'starter' || tier === 'pro_trial' ? (
+                    <div className="text-[12px] text-muted-foreground">
+                      {tier === 'starter' ? `${monthlyUsed}/${monthlyLimit}` : `${trialUsed}/${trialLimit}`}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="mt-2">
+                  <Progress value={percentRemaining} className="bg-muted/70" />
+                </div>
+                {tier === 'starter' ? (
+                  <div className="mt-2 text-[11px] text-muted-foreground">
+                    Batch upload is available on Professional.
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

@@ -16,6 +16,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Enforce plan selection: free users can view but cannot create tables.
+    const { data: entitlement, error: entErr } = await supabase
+      .from('entitlements')
+      .select('tier')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (entErr) return NextResponse.json({ error: entErr.message }, { status: 500 })
+    const tier = typeof entitlement?.tier === 'string' ? entitlement.tier : 'free'
+    if (tier === 'free') {
+      return NextResponse.json(
+        { error: 'Please choose a plan to create tables.' },
+        { status: 402 }
+      )
+    }
+
     const body: CreateTableRequest = await request.json()
 
     if (!body.table_name) {

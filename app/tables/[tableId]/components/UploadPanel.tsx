@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useSWRConfig } from 'swr'
+import { useRouter } from 'next/navigation'
 import type { ExtractResponse, ExtractedRow } from '@/types/api'
 import { createClient } from '@/lib/supabase/client'
 import { TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
@@ -29,6 +30,7 @@ type UploadState = 'idle' | 'processing' | 'failed'
 
 export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping = false }: UploadPanelProps) {
   const { mutate } = useSWRConfig()
+  const router = useRouter()
   const [state, setState] = useState<UploadState>('idle')
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -50,6 +52,11 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
 
   const batchEnabled = billingMe?.entitlement?.batch_enabled === true
   const tier = typeof billingMe?.entitlement?.tier === 'string' ? billingMe.entitlement.tier : null
+
+  const shouldRouteToBilling = (msg: string) => {
+    const m = (msg || '').toLowerCase()
+    return m.includes('limit') || m.includes('upgrade') || m.includes('trial has ended') || m.includes('choose a plan')
+  }
 
   const limitHint = useMemo(() => {
     if (!billingMe?.entitlement) return null
@@ -169,6 +176,10 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
   const startSingle = async (file: File) => {
     if (isBootstrapping) return
     if (isBusy) return
+    if (tier === 'free') {
+      router.push('/billing')
+      return
+    }
 
     if (columnsCount === 0) {
       setError('Please create at least one column before uploading a PDF. Click "Add Column" to get started.')
@@ -229,6 +240,8 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
       if (!uploadResult.ok) throw new Error('Failed to upload file to storage')
 
       await handleExtract(rowId)
+      // Revalidate billing/usage so progress bars update immediately.
+      void mutate('/api/billing/me')
       void mutate(rowsKey)
       setState('idle')
     } catch (e) {
@@ -236,6 +249,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
       if (rowId) await markRowFailed(rowId, msg)
       setError(msg)
       setState('failed')
+      if (shouldRouteToBilling(msg)) router.push('/settings?focus=billing')
     } finally {
       if (inputRef.current) inputRef.current.value = ''
     }
@@ -244,6 +258,10 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
   const startBatch = async (files: File[]) => {
     if (isBootstrapping) return
     if (isBusy) return
+    if (tier === 'free') {
+      router.push('/billing')
+      return
+    }
 
     if (columnsCount === 0) {
       setError('Please create at least one column before uploading a PDF. Click \"Add Column\" to get started.')
@@ -334,10 +352,13 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
           }
 
           await handleExtract(t.rowId)
+          // Revalidate billing/usage so progress bars update immediately.
+          void mutate('/api/billing/me')
         } catch (e) {
           failedCount += 1
           const msg = e instanceof Error ? e.message : 'Upload/extraction failed'
           await markRowFailed(t.rowId, msg)
+          if (shouldRouteToBilling(msg)) router.push('/settings?focus=billing')
         } finally {
           // Keep UI responsive; SWR polling will reflect row state changes as they land.
           void mutate(rowsKey)
@@ -354,8 +375,10 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
         setState('idle')
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Batch upload failed')
+      const msg = e instanceof Error ? e.message : 'Batch upload failed'
+      setError(msg)
       setState('failed')
+      if (shouldRouteToBilling(msg)) router.push('/settings?focus=billing')
     } finally {
       if (inputRef.current) inputRef.current.value = ''
     }
@@ -402,6 +425,10 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
         onDrop={(e) => {
           if (isBusy) return
           e.preventDefault()
+          if (tier === 'free') {
+            router.push('/billing')
+            return
+          }
           const list = Array.from(e.dataTransfer?.files ?? [])
           void startBatch(list)
         }}
@@ -439,7 +466,6 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
           <div className="space-y-2">
             <div className="font-serif font-bold text-[16px] tracking-medium">Upload file</div>
             <div className="text-[12px] text-muted-foreground">Upload a PDF to extract rows.</div>
-            {limitHint && <div className="text-[12px] text-muted-foreground/90">{limitHint}</div>}
           </div>
 
           <button
@@ -447,6 +473,10 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
             onClick={() => {
               if (isBootstrapping) return
               if (isBusy) return
+              if (tier === 'free') {
+                router.push('/billing')
+                return
+              }
               if (columnsCount === 0) {
                 setError('Please create at least one column before uploading a PDF. Click "Add Column" to get started.')
                 setState('failed')

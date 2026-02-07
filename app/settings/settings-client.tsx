@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,9 @@ import { createClient } from '@/lib/supabase/client'
 import { CreditCard, LifeBuoy, LogOut, Save, Shield, User } from 'lucide-react'
 import { PROFILE_UPDATED_EVENT } from '@/lib/constants/events'
 import { FIRST_NAME_CACHE_KEY, USER_INITIAL_CACHE_KEY } from '@/lib/constants/storage'
+import { useAiProvider } from '@/lib/hooks/useUserSettings'
+import { Progress } from '@/components/ui/progress'
+import PlanGateModal from '@/app/components/PlanGateModal'
 
 type InitialProfile = {
   email: string
@@ -55,8 +58,11 @@ export default function SettingsClient({
 
   const profileRef = useRef<HTMLDivElement>(null)
   const billingRef = useRef<HTMLDivElement>(null)
+  const modelRef = useRef<HTMLDivElement>(null)
   const securityRef = useRef<HTMLDivElement>(null)
   const supportRef = useRef<HTMLDivElement>(null)
+
+  const { aiProvider, setAiProvider } = useAiProvider()
 
   const { data: billingMe, mutate: mutateBilling } = useSWR(
     '/api/billing/me',
@@ -70,6 +76,18 @@ export default function SettingsClient({
 
   const [isOpeningPortal, setIsOpeningPortal] = useState(false)
   const [billingError, setBillingError] = useState<string | null>(null)
+
+  const tier = typeof billingMe?.entitlement?.tier === 'string' ? billingMe.entitlement.tier : 'free'
+  const monthlyUsed = Number(billingMe?.usage?.monthly?.docs_extracted ?? 0)
+  const monthlyLimit = Number(billingMe?.entitlement?.docs_limit_monthly ?? 200)
+  const trialUsed = Number(billingMe?.usage?.trial?.docs_extracted ?? 0)
+  const trialLimit = Number(billingMe?.entitlement?.docs_limit_trial ?? 50)
+
+  const docsRemaining =
+    tier === 'starter' ? Math.max(0, monthlyLimit - monthlyUsed) : tier === 'pro_trial' ? Math.max(0, trialLimit - trialUsed) : null
+  const docsLimit = tier === 'starter' ? monthlyLimit : tier === 'pro_trial' ? trialLimit : null
+  const percentRemaining =
+    tier === 'starter' && docsLimit ? (docsRemaining! / docsLimit) * 100 : tier === 'pro_trial' && docsLimit ? (docsRemaining! / docsLimit) * 100 : tier === 'pro' ? 100 : 0
 
   const openBillingPortal = async () => {
     if (isOpeningPortal) return
@@ -95,6 +113,16 @@ export default function SettingsClient({
   const scrollTo = (ref: React.RefObject<HTMLDivElement>) => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  // Allow deep-linking directly to Billing section.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const sp = new URLSearchParams(window.location.search)
+    const focus = sp.get('focus')
+    if (focus === 'billing') {
+      scrollTo(billingRef)
+    }
+  }, [])
 
   const saveProfile = async () => {
     setProfileError(null)
@@ -212,6 +240,7 @@ export default function SettingsClient({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-6">
+      <PlanGateModal />
       {/* Section list */}
       <aside className="lg:sticky lg:top-10 h-fit">
         <div className="rounded-xl border border-border bg-card p-2 shadow-sm">
@@ -238,6 +267,14 @@ export default function SettingsClient({
           >
             <Shield className="h-4 w-4 opacity-80" />
             Security
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollTo(modelRef)}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground"
+          >
+            <User className="h-4 w-4 opacity-80" />
+            Model
           </button>
           <button
             type="button"
@@ -333,27 +370,59 @@ export default function SettingsClient({
               <CardDescription>Manage your plan, trial, and usage limits.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div>
-                <span className="font-medium">Current plan:</span>{' '}
-                <span className="text-muted-foreground">{billingMe?.entitlement?.tier ?? 'free'}</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-border bg-card p-3">
+                  <div className="text-[12px] text-muted-foreground">Plan</div>
+                  <div className="mt-1 font-medium">
+                    {tier === 'starter'
+                      ? 'Starter'
+                      : tier === 'pro'
+                        ? 'Professional'
+                        : tier === 'pro_trial'
+                          ? 'Professional (Trial)'
+                          : 'No plan selected'}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-3">
+                  <div className="text-[12px] text-muted-foreground">Payment</div>
+                  <div className="mt-1 font-medium">
+                    {billingMe?.subscription?.amount_usd && (billingMe.subscription.interval === 'month' || billingMe.subscription.interval === 'year')
+                      ? `$${billingMe.subscription.amount_usd} / ${billingMe.subscription.interval}`
+                      : tier === 'pro_trial'
+                        ? 'Free during trial'
+                        : '—'}
+                  </div>
+                </div>
               </div>
 
-              {billingMe?.entitlement?.tier === 'starter' && (
-                <div className="text-muted-foreground">
-                  {Number(billingMe?.usage?.monthly?.docs_extracted ?? 0)} / {Number(billingMe?.entitlement?.docs_limit_monthly ?? 200)} documents used this month.
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3 text-muted-foreground">
+                  <div>
+                    {tier === 'starter'
+                      ? `${docsRemaining} left this month`
+                      : tier === 'pro_trial'
+                        ? `${docsRemaining} left in trial`
+                        : tier === 'pro'
+                          ? 'Unlimited documents'
+                          : 'No active plan'}
+                  </div>
+                  {tier === 'starter' || tier === 'pro_trial' ? (
+                    <div className="tabular-nums">
+                      {tier === 'starter' ? `${monthlyUsed}/${monthlyLimit}` : `${trialUsed}/${trialLimit}`}
+                    </div>
+                  ) : null}
                 </div>
-              )}
-
-              {billingMe?.entitlement?.tier === 'pro_trial' && (
-                <div className="text-muted-foreground">
-                  {Number(billingMe?.usage?.trial?.docs_extracted ?? 0)} / {Number(billingMe?.entitlement?.docs_limit_trial ?? 50)} documents used in trial. Trial ends{' '}
-                  {billingMe?.entitlement?.trial_expires_at ? new Date(billingMe.entitlement.trial_expires_at).toLocaleDateString() : 'soon'}.
-                </div>
-              )}
-
-              {billingMe?.entitlement?.tier === 'pro' && (
-                <div className="text-muted-foreground">Unlimited documents. Batch upload enabled.</div>
-              )}
+                <Progress value={percentRemaining} />
+                {tier === 'pro_trial' ? (
+                  <div className="text-[12px] text-muted-foreground">
+                    Trial ends{' '}
+                    {billingMe?.entitlement?.trial_expires_at
+                      ? new Date(billingMe.entitlement.trial_expires_at).toLocaleDateString()
+                      : 'soon'}
+                    .
+                  </div>
+                ) : null}
+              </div>
             </CardContent>
             <CardFooter className="flex flex-wrap gap-2">
               <Button
@@ -372,21 +441,52 @@ export default function SettingsClient({
                 </Button>
               )}
 
-              {billingMe?.entitlement?.tier !== 'pro' && (
-                <Button
-                  type="button"
-                  onClick={() => router.push('/start?intent=checkout&plan=pro&interval=month&returnTo=/tables')}
-                >
-                  Upgrade to Professional
-                </Button>
-              )}
-
-              {billingMe?.entitlement?.tier === 'free' && (
-                <Button type="button" variant="outline" onClick={() => router.push('/start?intent=trial_pro&returnTo=/tables')}>
-                  Start free trial
-                </Button>
-              )}
+              <Button type="button" onClick={() => router.push('/billing')}>
+                {tier === 'pro' ? 'View plans' : 'Upgrade'}
+              </Button>
             </CardFooter>
+          </Card>
+        </div>
+
+        <div ref={modelRef} className="scroll-mt-24">
+          <Card>
+            <CardHeader>
+              <CardTitle>Model</CardTitle>
+              <CardDescription>Choose which AI provider to use for extraction.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="inline-flex w-full rounded-xl border border-border bg-card p-1 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setAiProvider('chatpdf')}
+                  className={[
+                    'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    aiProvider === 'chatpdf'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-foreground/80 hover:bg-muted/40',
+                  ].join(' ')}
+                  aria-pressed={aiProvider === 'chatpdf'}
+                >
+                  ChatPDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiProvider('gemini')}
+                  className={[
+                    'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    aiProvider === 'gemini'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-foreground/80 hover:bg-muted/40',
+                  ].join(' ')}
+                  aria-pressed={aiProvider === 'gemini'}
+                >
+                  Gemini
+                </button>
+              </div>
+              <div className="mt-3 text-xs text-muted-foreground">
+                This setting is saved to your account and applied to future extractions.
+              </div>
+            </CardContent>
           </Card>
         </div>
 
