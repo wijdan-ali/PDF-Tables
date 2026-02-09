@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  // 👇 REQUIRED because the app is mounted at /app
+  basePath: '/app',
+  assetPrefix: '/app',
+
   webpack: (config, { dev, isServer }) => {
     // pdfjs-dist ships the worker as ESM (`.mjs`). Next's production minifier can choke on it
     // when it ends up in the JS minimization pipeline. Treat it as an emitted asset instead.
@@ -24,4 +29,3 @@ const nextConfig = {
 }
 
 module.exports = nextConfig
-
