@@ -14,6 +14,7 @@ import { FIRST_NAME_CACHE_KEY, USER_INITIAL_CACHE_KEY } from '@/lib/constants/st
 import { useAiProvider } from '@/lib/hooks/useUserSettings'
 import { Progress } from '@/components/ui/progress'
 import PlanGateModal from '@/app/components/PlanGateModal'
+import { apiPath } from '@/lib/api'
 
 type InitialProfile = {
   email: string
@@ -65,7 +66,7 @@ export default function SettingsClient({
   const { aiProvider, setAiProvider } = useAiProvider()
 
   const { data: billingMe, mutate: mutateBilling } = useSWR(
-    '/api/billing/me',
+    apiPath('/api/billing/me'),
     async (url: string) => {
       const res = await fetch(url)
       if (!res.ok) return null
@@ -94,7 +95,7 @@ export default function SettingsClient({
     setBillingError(null)
     setIsOpeningPortal(true)
     try {
-      const res = await fetch('/api/billing/portal-session', {
+      const res = await fetch(apiPath('/api/billing/portal-session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ returnTo: '/settings' }),
@@ -131,7 +132,7 @@ export default function SettingsClient({
     try {
       const nextFullName = fullName.trim()
       const nextCompanyName = companyName.trim()
-      const res = await fetch('/api/settings', {
+      const res = await fetch(apiPath('/api/settings'), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

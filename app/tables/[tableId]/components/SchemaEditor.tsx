@@ -8,6 +8,7 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { apiPath } from '@/lib/api'
 
 interface SchemaEditorProps {
   tableId: string
@@ -90,7 +91,7 @@ export default function SchemaEditor({ tableId, initialColumns }: SchemaEditorPr
     setError(null)
 
     try {
-      const response = await fetch(`/api/tables/${tableId}`, {
+      const response = await fetch(apiPath(`/api/tables/${tableId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ columns }),

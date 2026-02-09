@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useSWRConfig } from 'swr'
 import ModalShell from '@/app/components/ModalShell'
+import { apiPath } from '@/lib/api'
 
 interface RenameTableModalProps {
   isOpen: boolean
@@ -56,7 +57,7 @@ export default function RenameTableModal({
 
     setIsSaving(true)
     try {
-      const res = await fetch(`/api/tables/${tableId}`, {
+      const res = await fetch(apiPath(`/api/tables/${tableId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table_name: nextName }),
@@ -68,7 +69,7 @@ export default function RenameTableModal({
 
       // Update SWR caches so navigating to the table doesn't show stale name first.
       void mutate(
-        `/api/tables/${tableId}`,
+        apiPath(`/api/tables/${tableId}`),
         (prev: any) => {
           if (!prev || typeof prev !== 'object') return prev
           return { ...prev, table_name: nextName, updated_at }
@@ -76,7 +77,7 @@ export default function RenameTableModal({
         { revalidate: false, populateCache: true }
       )
       void mutate(
-        '/api/tables',
+        apiPath('/api/tables'),
         (prev: any) => {
           if (!Array.isArray(prev)) return prev
           const next = prev.map((t: any) =>

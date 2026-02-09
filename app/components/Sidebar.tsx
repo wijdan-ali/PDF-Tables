@@ -21,6 +21,7 @@ import {
 } from '@/lib/constants/events'
 import { SIDEBAR_TABLES_CACHE_KEY } from '@/lib/constants/storage'
 import { Progress } from '@/components/ui/progress'
+import { apiPath } from '@/lib/api'
 
 interface Table {
   id: string
@@ -116,7 +117,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
     if (isDeletingTable) return
     setIsDeletingTable(true)
     try {
-      const res = await fetch(`/api/tables/${tableId}`, { method: 'DELETE' })
+      const res = await fetch(apiPath(`/api/tables/${tableId}`), { method: 'DELETE' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.error || 'Failed to delete table')
 
@@ -167,7 +168,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
   }, [router])
 
   const { data: billingMe } = useSWR(
-    '/api/billing/me',
+    apiPath('/api/billing/me'),
     async (url: string) => {
       const res = await fetch(url)
       if (!res.ok) return null

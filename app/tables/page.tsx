@@ -19,6 +19,7 @@ import {
   TABLE_TOUCHED_EVENT,
 } from '@/lib/constants/events'
 import { FIRST_NAME_CACHE_KEY, GREETING_CACHE_KEY, SIDEBAR_TABLES_CACHE_KEY } from '@/lib/constants/storage'
+import { apiPath } from '@/lib/api'
 
 type TableSummary = {
   id: string
@@ -137,7 +138,7 @@ export default function TablesPage() {
     error,
     isLoading,
     mutate,
-  } = useSWR<TableSummary[], HttpError>('/api/tables', fetcher, {
+  } = useSWR<TableSummary[], HttpError>(apiPath('/api/tables'), fetcher, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
     fallbackData: cachedTables,
@@ -456,7 +457,7 @@ export default function TablesPage() {
           setIsDeletingTable(true)
           void (async () => {
             try {
-              const res = await fetch(`/api/tables/${id}`, { method: 'DELETE' })
+              const res = await fetch(apiPath(`/api/tables/${id}`), { method: 'DELETE' })
               const data = await res.json().catch(() => ({}))
               if (!res.ok) throw new Error(data?.error || 'Failed to delete table')
               // Update local list immediately

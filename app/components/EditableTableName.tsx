@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { TABLE_NAME_UPDATED_EVENT, TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
+import { apiPath } from '@/lib/api'
 
 interface EditableTableNameProps {
   tableId: string
@@ -45,7 +46,7 @@ export default function EditableTableName({ tableId, initialName, onUpdate }: Ed
     setIsSaving(true)
     try {
       const nextName = name.trim()
-      const response = await fetch(`/api/tables/${tableId}`, {
+      const response = await fetch(apiPath(`/api/tables/${tableId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table_name: nextName }),

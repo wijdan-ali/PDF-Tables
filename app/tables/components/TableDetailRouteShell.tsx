@@ -7,6 +7,7 @@ import type { Table } from '@/types/api'
 import { useEffect } from 'react'
 import TableDetailSkeleton from '../[tableId]/components/TableDetailSkeleton'
 import { TABLE_NAME_UPDATED_EVENT } from '@/lib/constants/events'
+import { apiPath } from '@/lib/api'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -14,7 +15,7 @@ export default function TableDetailRouteShell() {
   const params = useParams<{ tableId?: string }>()
   const tableId = typeof params?.tableId === 'string' ? params.tableId : null
 
-  const key = tableId ? `/api/tables/${tableId}` : null
+  const key = tableId ? apiPath(`/api/tables/${tableId}`) : null
   const { data, mutate } = useSWR<any>(key, fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,

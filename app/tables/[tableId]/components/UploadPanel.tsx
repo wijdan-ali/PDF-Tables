@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { PLAN_GATE_OPEN_EVENT, TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
 import { AI_PROVIDER_STORAGE_KEY } from '@/lib/constants/storage'
 import GrainOverlay from '@/components/GrainOverlay'
+import { apiPath } from '@/lib/api'
 
 // Separate grain overlay (independent from Silk noise). Tweak freely.
 const UPLOAD_GRAIN_OPACITY = 0.55
@@ -37,11 +38,11 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
   const cardRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number | null>(null)
 
-  const rowsKey = `/api/tables/${tableId}/rows`
+  const rowsKey = apiPath(`/api/tables/${tableId}/rows`)
   const isBusy = useMemo(() => state === 'processing', [state])
 
   const { data: billingMe } = useSWR(
-    '/api/billing/me',
+    apiPath('/api/billing/me'),
     async (url: string) => {
       const res = await fetch(url)
       if (!res.ok) return null
@@ -151,7 +152,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
   const markRowFailed = async (targetRowId: string, message: string) => {
     optimisticUpdateRow(targetRowId, { status: 'failed', error: message } as any)
     try {
-      await fetch(`/api/rows/${targetRowId}/fail`, {
+      await fetch(apiPath(`/api/rows/${targetRowId}/fail`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: message }),
@@ -213,7 +214,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
     let rowId: string | null = null
     try {
       // Step 1: Create a row + get signed upload URL
-      const initRes = await fetch(`/api/tables/${tableId}/upload`, {
+      const initRes = await fetch(apiPath(`/api/tables/${tableId}/upload`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ size: file.size, filename: file.name }),
@@ -245,7 +246,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
 
       await handleExtract(rowId)
       // Revalidate billing/usage so progress bars update immediately.
-      void mutate('/api/billing/me')
+      void mutate(apiPath('/api/billing/me'))
       void mutate(rowsKey)
       setState('idle')
     } catch (e) {
@@ -301,7 +302,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
 
     try {
       // Step 1: Create N rows and get N signed upload URLs
-      const initRes = await fetch(`/api/tables/${tableId}/upload/batch`, {
+      const initRes = await fetch(apiPath(`/api/tables/${tableId}/upload/batch`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -357,7 +358,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
 
           await handleExtract(t.rowId)
           // Revalidate billing/usage so progress bars update immediately.
-          void mutate('/api/billing/me')
+          void mutate(apiPath('/api/billing/me'))
         } catch (e) {
           failedCount += 1
           const msg = e instanceof Error ? e.message : 'Upload/extraction failed'

@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import type { ExtractedRow } from '@/types/api'
+import { apiPath } from '@/lib/api'
 
 const fetcher = async (url: string): Promise<ExtractedRow[]> => {
   const res = await fetch(url)
@@ -23,7 +24,7 @@ export function useRows({
   tableId: string
   isPaused: () => boolean
 }) {
-  return useSWR<ExtractedRow[]>(`/api/tables/${tableId}/rows`, fetcher, {
+  return useSWR<ExtractedRow[]>(apiPath(`/api/tables/${tableId}/rows`), fetcher, {
     // Fast polling during extraction; slow background refresh while idle to keep signed URLs fresh.
     refreshInterval: (latest) => {
       const isExtracting =

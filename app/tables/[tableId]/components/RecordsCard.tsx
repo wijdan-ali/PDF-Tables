@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import type { ExtractedRow } from '@/types/api'
 import GrainOverlay from '@/components/GrainOverlay'
+import { apiPath } from '@/lib/api'
 
 interface RecordsCardProps {
   tableId: string
@@ -17,7 +18,7 @@ const RECORDS_GRAIN_CONTRAST = 1.35
 const RECORDS_GRAIN_BRIGHTNESS = 1.05
 
 export default function RecordsCard({ tableId }: RecordsCardProps) {
-  const rowsKey = useMemo(() => `/api/tables/${tableId}/rows`, [tableId])
+  const rowsKey = useMemo(() => apiPath(`/api/tables/${tableId}/rows`), [tableId])
   const { data: rows } = useSWR<ExtractedRow[]>(rowsKey, fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,

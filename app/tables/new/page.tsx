@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { TABLE_CREATED_EVENT } from '@/lib/constants/events'
+import { apiPath } from '@/lib/api'
 
 export default function CreateTablePage() {
   const router = useRouter()
@@ -26,7 +27,7 @@ export default function CreateTablePage() {
     setIsSubmitting(true)
 
     try {
-      const response = await fetch('/api/tables', {
+      const response = await fetch(apiPath('/api/tables'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

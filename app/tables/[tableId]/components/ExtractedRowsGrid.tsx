@@ -13,6 +13,7 @@ import { TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
 import { useRows } from './useRows'
 import { usePersistedRowOrder } from './usePersistedRowOrder'
 import ExtractingInlineIndicator from './ExtractingInlineIndicator'
+import { apiPath } from '@/lib/api'
 
 interface ExtractedRowsGridProps {
   tableId: string
@@ -152,7 +153,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     if (onColumnsChange) onColumnsChange(nextColumns)
 
     try {
-      const res = await fetch(`/api/tables/${tableId}`, {
+      const res = await fetch(apiPath(`/api/tables/${tableId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ columns: nextColumns }),
@@ -519,7 +520,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
       }
 
       try {
-        const resp = await fetch(`/api/rows/${movedId}`, {
+        const resp = await fetch(apiPath(`/api/rows/${movedId}`), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ row_order: nextOrder }),
@@ -743,7 +744,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
 
     const results = await Promise.all(
       rowIds.map((id) =>
-        fetch(`/api/rows/${id}`, { method: 'DELETE' }).then((r) => ({ ok: r.ok, id }))
+        fetch(apiPath(`/api/rows/${id}`), { method: 'DELETE' }).then((r) => ({ ok: r.ok, id }))
       )
     )
     const failed = results.filter((r) => !r.ok).map((r) => r.id)
@@ -837,7 +838,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     setEditColumn(null)
 
     try {
-      const res = await fetch(`/api/tables/${tableId}`, {
+      const res = await fetch(apiPath(`/api/tables/${tableId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ columns: optimistic }),
@@ -944,7 +945,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
         [columnKey]: value || null,
       }
 
-      const response = await fetch(`/api/rows/${rowId}`, {
+      const response = await fetch(apiPath(`/api/rows/${rowId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data: updatedData }),
@@ -987,7 +988,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
     const updatedColumns = [...columns, newColumn].sort((a, b) => a.order - b.order)
 
     try {
-      const response = await fetch(`/api/tables/${tableId}`, {
+      const response = await fetch(apiPath(`/api/tables/${tableId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ columns: updatedColumns }),
@@ -1024,7 +1025,7 @@ export default function ExtractedRowsGrid({ tableId, columns, onColumnsChange }:
 
     setIsDeletingColumn(true)
     try {
-      const response = await fetch(`/api/tables/${tableId}`, {
+      const response = await fetch(apiPath(`/api/tables/${tableId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ columns: updatedColumns }),

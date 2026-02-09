@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import { PricingPlans, type Tier } from '@/app/components/PricingPlans'
 import { Button } from '@/components/ui/button'
+import { apiPath } from '@/lib/api'
 
 type BillingMe = {
   entitlement: { tier: string } | null
@@ -23,7 +24,7 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export default function BillingClient() {
   const router = useRouter()
-  const { data, error, mutate, isLoading } = useSWR<BillingMe>('/api/billing/me', fetcher, {
+  const { data, error, mutate, isLoading } = useSWR<BillingMe>(apiPath('/api/billing/me'), fetcher, {
     revalidateOnFocus: true,
   })
 
@@ -81,7 +82,7 @@ export default function BillingClient() {
 
             // Starter -> Pro: in-place upgrade with proration.
             if (tier === 'starter' && sel.choice === 'pro') {
-              const res = await fetch('/api/billing/change-plan', {
+              const res = await fetch(apiPath('/api/billing/change-plan'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ plan: 'pro', interval: sel.interval }),
@@ -100,7 +101,7 @@ export default function BillingClient() {
             }
 
             // Default: send to Stripe portal (covers renewals/cancel/downgrade).
-            const portalRes = await fetch('/api/billing/portal-session', {
+            const portalRes = await fetch(apiPath('/api/billing/portal-session'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ returnTo: '/settings?focus=billing' }),

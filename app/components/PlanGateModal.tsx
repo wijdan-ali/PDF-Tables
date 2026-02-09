@@ -8,6 +8,7 @@ import { PricingPlans, type Tier } from './PricingPlans'
 import { Button } from '@/components/ui/button'
 import { X } from 'lucide-react'
 import { PLAN_GATE_OPEN_EVENT } from '@/lib/constants/events'
+import { apiPath } from '@/lib/api'
 
 type BillingMe = {
   entitlement?: { tier?: string } | null
@@ -25,7 +26,7 @@ export default function PlanGateModal({
   openWhenTierIsFree?: boolean
 }) {
   const router = useRouter()
-  const { data, mutate, isLoading } = useSWR<BillingMe>('/api/billing/me', fetcher, {
+  const { data, mutate, isLoading } = useSWR<BillingMe>(apiPath('/api/billing/me'), fetcher, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
   })
@@ -126,7 +127,7 @@ export default function PlanGateModal({
               setIsWorking(true)
               try {
                 if (sel.choice === 'trial') {
-                  const res = await fetch('/api/billing/start-trial', { method: 'POST' })
+                  const res = await fetch(apiPath('/api/billing/start-trial'), { method: 'POST' })
                   const payload = (await res.json().catch(() => ({}))) as any
                   if (!res.ok) throw new Error(payload?.error || 'Failed to start trial')
                   await mutate()
