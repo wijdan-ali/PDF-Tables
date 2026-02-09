@@ -6,7 +6,7 @@ import { useSWRConfig } from 'swr'
 import { useRouter } from 'next/navigation'
 import type { ExtractResponse, ExtractedRow } from '@/types/api'
 import { createClient } from '@/lib/supabase/client'
-import { TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
+import { PLAN_GATE_OPEN_EVENT, TABLE_TOUCHED_EVENT } from '@/lib/constants/events'
 import { AI_PROVIDER_STORAGE_KEY } from '@/lib/constants/storage'
 import GrainOverlay from '@/components/GrainOverlay'
 
@@ -56,6 +56,10 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
   const shouldRouteToBilling = (msg: string) => {
     const m = (msg || '').toLowerCase()
     return m.includes('limit') || m.includes('upgrade') || m.includes('trial has ended') || m.includes('choose a plan')
+  }
+
+  const openPlanGate = () => {
+    window.dispatchEvent(new Event(PLAN_GATE_OPEN_EVENT))
   }
 
   const limitHint = useMemo(() => {
@@ -177,7 +181,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
     if (isBootstrapping) return
     if (isBusy) return
     if (tier === 'free') {
-      router.push('/billing')
+      openPlanGate()
       return
     }
 
@@ -259,7 +263,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
     if (isBootstrapping) return
     if (isBusy) return
     if (tier === 'free') {
-      router.push('/billing')
+      openPlanGate()
       return
     }
 
@@ -426,7 +430,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
           if (isBusy) return
           e.preventDefault()
           if (tier === 'free') {
-            router.push('/billing')
+            openPlanGate()
             return
           }
           const list = Array.from(e.dataTransfer?.files ?? [])
@@ -474,7 +478,7 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
               if (isBootstrapping) return
               if (isBusy) return
               if (tier === 'free') {
-                router.push('/billing')
+                openPlanGate()
                 return
               }
               if (columnsCount === 0) {

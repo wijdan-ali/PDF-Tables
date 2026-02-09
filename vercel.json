@@ -1,0 +1,8 @@
+{
+    "rewrites": [
+      {
+        "source": "/app/:path*",
+        "destination": "https://pdf-tables.vercel.app/:path*"
+      }
+    ]
+  }

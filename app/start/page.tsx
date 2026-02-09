@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getAppOrigin } from '@/lib/url'
 
 type Intent = 'checkout' | 'trial_pro' | 'app'
 type PlanKey = 'starter' | 'pro'
@@ -118,11 +119,10 @@ export default async function StartPage({
     const accessToken = session?.access_token
     if (!accessToken) redirect('/login')
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL
-    if (!appUrl) throw new Error('Missing NEXT_PUBLIC_APP_URL')
+    const appOrigin = getAppOrigin()
 
-    const successUrl = `${appUrl}/start?intent=app&returnTo=${encodeURIComponent(returnTo)}&billing=success`
-    const cancelUrl = `${appUrl}/start?intent=app&returnTo=${encodeURIComponent(returnTo)}&billing=cancel`
+    const successUrl = `${appOrigin}/start?intent=app&returnTo=${encodeURIComponent(returnTo)}&billing=success`
+    const cancelUrl = `${appOrigin}/start?intent=app&returnTo=${encodeURIComponent(returnTo)}&billing=cancel`
 
     const checkoutUrl = await stripeCreateCheckoutSession({ accessToken, priceId, successUrl, cancelUrl })
     redirect(checkoutUrl)

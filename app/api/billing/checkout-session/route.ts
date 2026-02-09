@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getAppOrigin } from '@/lib/url'
 
 export const runtime = 'nodejs'
 
@@ -55,11 +56,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Supabase env not configured' }, { status: 500 })
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL
-    if (!appUrl) return NextResponse.json({ error: 'Missing NEXT_PUBLIC_APP_URL' }, { status: 500 })
+    const appOrigin = getAppOrigin()
 
-    const successUrl = `${appUrl}/start?intent=app&returnTo=${encodeURIComponent(returnTo)}&billing=success`
-    const cancelUrl = `${appUrl}/start?intent=app&returnTo=${encodeURIComponent(returnTo)}&billing=cancel`
+    const successUrl = `${appOrigin}/start?intent=app&returnTo=${encodeURIComponent(returnTo)}&billing=success`
+    const cancelUrl = `${appOrigin}/start?intent=app&returnTo=${encodeURIComponent(returnTo)}&billing=cancel`
 
     const fnRes = await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`, {
       method: 'POST',

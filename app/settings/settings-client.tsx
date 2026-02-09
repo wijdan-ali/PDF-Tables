@@ -386,11 +386,17 @@ export default function SettingsClient({
                 <div className="rounded-xl border border-border bg-card p-3">
                   <div className="text-[12px] text-muted-foreground">Payment</div>
                   <div className="mt-1 font-medium">
-                    {billingMe?.subscription?.amount_usd && (billingMe.subscription.interval === 'month' || billingMe.subscription.interval === 'year')
-                      ? `$${billingMe.subscription.amount_usd} / ${billingMe.subscription.interval}`
-                      : tier === 'pro_trial'
-                        ? 'Free during trial'
-                        : '—'}
+                    {(() => {
+                      const sub = billingMe?.subscription
+                      const isPaidTier = tier === 'starter' || tier === 'pro'
+                      const isActivePaidStatus = sub?.status === 'active' || sub?.status === 'trialing'
+                      const hasInterval = sub?.interval === 'month' || sub?.interval === 'year'
+                      if (isPaidTier && isActivePaidStatus && sub?.amount_usd && hasInterval) {
+                        return `$${sub.amount_usd} / ${sub.interval}`
+                      }
+                      if (tier === 'pro_trial') return 'Free during trial'
+                      return '—'
+                    })()}
                   </div>
                 </div>
               </div>

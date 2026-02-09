@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getAppOrigin } from '@/lib/url'
 
 export const runtime = 'nodejs'
 
@@ -24,12 +25,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Supabase env not configured' }, { status: 500 })
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL
-    if (!appUrl) return NextResponse.json({ error: 'Missing NEXT_PUBLIC_APP_URL' }, { status: 500 })
+    const appOrigin = getAppOrigin()
 
     const body = (await request.json().catch(() => ({}))) as { returnTo?: unknown }
     const returnTo = typeof body.returnTo === 'string' && body.returnTo.startsWith('/') ? body.returnTo : '/settings'
-    const returnUrl = `${appUrl}${returnTo}`
+    const returnUrl = `${appOrigin}${returnTo}`
 
     const fnRes = await fetch(`${supabaseUrl}/functions/v1/create-portal-session`, {
       method: 'POST',

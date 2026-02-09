@@ -118,6 +118,11 @@ function isActivePaidStatus(status: string): boolean {
   return status === 'active' || status === 'trialing'
 }
 
+function isTerminalDowngradeStatus(status: string): boolean {
+  // These mean the subscription is no longer usable; we should remove paid entitlements.
+  return status === 'canceled' || status === 'incomplete_expired'
+}
+
 function entitlementForPlan(plan_key: string | null, active: boolean): EntitlementUpdate {
   if (!active) return { tier: 'free', docs_limit_monthly: null, docs_limit_trial: null, batch_enabled: false }
   if (plan_key === 'starter') return { tier: 'starter', docs_limit_monthly: 200, docs_limit_trial: null, batch_enabled: false }
@@ -155,7 +160,7 @@ async function upsertSubscriptionAndEntitlement(
   const { plan_key, interval } = priceId ? mapPriceToPlan(priceId, env) : { plan_key: null, interval: null }
 
   const active = isActivePaidStatus(status)
-  const entitlement = entitlementForPlan(plan_key, active)
+  const terminal = isTerminalDowngradeStatus(status)
 
   const { error: subErr } = await supabase.from('billing_subscriptions').upsert(
     {
@@ -173,22 +178,33 @@ async function upsertSubscriptionAndEntitlement(
   )
   if (subErr) throw new Error(`Failed to upsert billing_subscriptions: ${subErr.message}`)
 
-  // IMPORTANT: Do not clear trial_claimed_at; users shouldn't be able to re-trial after churn.
-  const { error: entErr } = await supabase
-    .from('entitlements')
-    .upsert(
-      {
-        user_id: userId,
-        tier: entitlement.tier,
-        docs_limit_monthly: entitlement.docs_limit_monthly,
-        docs_limit_trial: entitlement.docs_limit_trial,
-        batch_enabled: entitlement.batch_enabled,
-        // Paid plans should not carry trial_expires_at forward as an active limiter.
-        ...(entitlement.tier !== 'pro_trial' ? { trial_expires_at: null } : {}),
-      },
-      { onConflict: 'user_id' }
-    )
-  if (entErr) throw new Error(`Failed to upsert entitlements: ${entErr.message}`)
+  // Entitlements update rules:
+  // - When subscription is active/trialing, set entitlements to match the Stripe price.
+  // - When subscription is canceled/incomplete_expired, downgrade to free.
+  // - When subscription is incomplete/past_due/unpaid/paused, DO NOT downgrade automatically.
+  //   This prevents locking users out during upgrade flows (proration invoice pending) or transient payment issues.
+  const isKnownPlan = plan_key === 'starter' || plan_key === 'pro'
+  const shouldUpdateEntitlements = (active && isKnownPlan) || terminal
+  if (shouldUpdateEntitlements) {
+    const entitlement = terminal ? entitlementForPlan(null, false) : entitlementForPlan(plan_key, active)
+
+    // IMPORTANT: Do not clear trial_claimed_at; users shouldn't be able to re-trial after churn.
+    const { error: entErr } = await supabase
+      .from('entitlements')
+      .upsert(
+        {
+          user_id: userId,
+          tier: entitlement.tier,
+          docs_limit_monthly: entitlement.docs_limit_monthly,
+          docs_limit_trial: entitlement.docs_limit_trial,
+          batch_enabled: entitlement.batch_enabled,
+          // Paid plans should not carry trial_expires_at forward as an active limiter.
+          ...(entitlement.tier !== 'pro_trial' ? { trial_expires_at: null } : {}),
+        },
+        { onConflict: 'user_id' }
+      )
+    if (entErr) throw new Error(`Failed to upsert entitlements: ${entErr.message}`)
+  }
 }
 
 async function resolveUserIdFromStripe(
