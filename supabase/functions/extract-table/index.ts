@@ -262,7 +262,7 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
   const model = getEnvOptional('OPENROUTER_MODEL') ?? 'arcee-ai/trinity-large-preview:free'
   const fallbackModel = getEnvOptional('OPENROUTER_FALLBACK_MODEL') ?? 'arcee-ai/trinity-large-preview:free'
   // Force deterministic parsing for broad model compatibility.
-  const pdfEngine = 'pdf-text'
+  const pdfEngine = 'native'
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
