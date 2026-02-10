@@ -21,7 +21,7 @@ import {
 } from '@/lib/constants/events'
 import { SIDEBAR_TABLES_CACHE_KEY } from '@/lib/constants/storage'
 import { Progress } from '@/components/ui/progress'
-import { apiPath } from '@/lib/api'
+import { apiPath, getBasePath } from '@/lib/api'
 
 interface Table {
   id: string
@@ -68,6 +68,7 @@ function writeTablesCache(next: Table[]) {
 export default function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const logoUrl = `${getBasePath()}/base_logo.png`
   const [tables, setTables] = useState<Table[]>(() => (typeof window === 'undefined' ? [] : readTablesCache()))
   const [loading, setLoading] = useState<boolean>(() =>
     typeof window === 'undefined' ? true : readTablesCache().length === 0
@@ -335,11 +336,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed }: Sideba
                   aria-hidden="true"
                   className="inline-block h-10 w-10 bg-primary"
                   style={{
-                    WebkitMaskImage: 'url(/base_logo.png)',
+                    WebkitMaskImage: `url(${logoUrl})`,
                     WebkitMaskRepeat: 'no-repeat',
                     WebkitMaskPosition: 'center',
                     WebkitMaskSize: 'contain',
-                    maskImage: 'url(/base_logo.png)',
+                    maskImage: `url(${logoUrl})`,
                     maskRepeat: 'no-repeat',
                     maskPosition: 'center',
                     maskSize: 'contain',
