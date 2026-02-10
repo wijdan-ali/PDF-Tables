@@ -261,8 +261,8 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
   const xTitle = getEnvOptional('OPENROUTER_X_TITLE')
   const model = getEnvOptional('OPENROUTER_MODEL') ?? 'arcee-ai/trinity-large-preview:free'
   const fallbackModel = getEnvOptional('OPENROUTER_FALLBACK_MODEL') ?? 'arcee-ai/trinity-large-preview:free'
-  // Prefer deterministic parsing for broad model compatibility.
-  const pdfEngine = getEnvOptional('OPENROUTER_PDF_ENGINE') ?? 'pdf-text'
+  // Force deterministic parsing for broad model compatibility.
+  const pdfEngine = 'pdf-text'
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
@@ -272,14 +272,12 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
   if (xTitle) headers['X-Title'] = xTitle
 
   const filename = displayName.endsWith('.pdf') ? displayName : `${displayName}.pdf`
-  const plugins = pdfEngine
-    ? [
-        {
-          id: 'file-parser',
-          pdf: { engine: pdfEngine },
-        },
-      ]
-    : undefined
+  const plugins = [
+    {
+      id: 'file-parser',
+      pdf: { engine: pdfEngine },
+    },
+  ]
 
   const payload: Record<string, unknown> = {
     messages: [
@@ -302,7 +300,7 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
       allow_fallbacks: true,
       require_parameters: true,
     },
-    ...(plugins ? { plugins } : {}),
+    plugins,
   }
   if (fallbackModel && fallbackModel !== model) {
     payload.models = [model, fallbackModel]
