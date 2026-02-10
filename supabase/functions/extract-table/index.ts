@@ -259,8 +259,10 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
   const apiKey = getEnv('OPENROUTER_API_KEY')
   const httpReferer = getEnvOptional('OPENROUTER_HTTP_REFERER')
   const xTitle = getEnvOptional('OPENROUTER_X_TITLE')
-  const model = getEnvOptional('OPENROUTER_MODEL') ?? 'openrouter/pony-alpha'
-  const pdfEngine = getEnvOptional('OPENROUTER_PDF_ENGINE')
+  const model = getEnvOptional('OPENROUTER_MODEL') ?? 'arcee-ai/trinity-large-preview:free'
+  const fallbackModel = getEnvOptional('OPENROUTER_FALLBACK_MODEL') ?? 'arcee-ai/trinity-large-preview:free'
+  // Prefer deterministic parsing for broad model compatibility.
+  const pdfEngine = getEnvOptional('OPENROUTER_PDF_ENGINE') ?? 'pdf-text'
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
@@ -279,8 +281,7 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
       ]
     : undefined
 
-  const payload = {
-    model,
+  const payload: Record<string, unknown> = {
     messages: [
       {
         role: 'user',
@@ -297,7 +298,16 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
       },
     ],
     stream: false,
+    provider: {
+      allow_fallbacks: true,
+      require_parameters: true,
+    },
     ...(plugins ? { plugins } : {}),
+  }
+  if (fallbackModel && fallbackModel !== model) {
+    payload.models = [model, fallbackModel]
+  } else {
+    payload.model = model
   }
 
   const completionRes = await fetchWithRetry(
@@ -312,7 +322,18 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
 
   if (!completionRes.ok) {
     const text = await completionRes.text().catch(() => '')
-    throw new Error(`OpenRouter API error: ${completionRes.status} ${text}`)
+    let details = text
+    try {
+      const parsed = JSON.parse(text)
+      const providerName = parsed?.error?.metadata?.provider_name
+      const providerRaw = parsed?.error?.metadata?.raw
+      if (providerName || providerRaw) {
+        details = `${parsed?.error?.message || 'Provider returned error'} (provider=${providerName || 'unknown'}, raw=${providerRaw || 'n/a'})`
+      }
+    } catch {
+      // Keep raw text if it's not JSON.
+    }
+    throw new Error(`OpenRouter API error: ${completionRes.status} ${details}`)
   }
 
   const completion: any = await completionRes.json()
@@ -343,9 +364,10 @@ serve(async (req) => {
     // OpenRouter provider secrets/config:
     // - OPENROUTER_API_KEY=...
     // - OPENROUTER_MODEL=... (optional, defaults to anthropic/claude-sonnet-4)
+    // - OPENROUTER_FALLBACK_MODEL=... (optional, defaults to anthropic/claude-sonnet-4)
     // - OPENROUTER_HTTP_REFERER=... (optional)
     // - OPENROUTER_X_TITLE=... (optional)
-    // - OPENROUTER_PDF_ENGINE=... (optional, e.g. mistral-ocr)
+    // - OPENROUTER_PDF_ENGINE=... (optional, defaults to pdf-text; e.g. mistral-ocr)
     const publishableKey = getEnv('SB_PUBLISHABLE_KEY')
     const secretKey = getEnv('SB_SECRET_KEY')
 
