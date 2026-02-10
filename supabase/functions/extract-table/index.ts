@@ -2,8 +2,9 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.90.1'
 import { getCorsHeaders } from '../_shared/cors.ts'
 import { GoogleGenAI, createPartFromUri } from 'npm:@google/genai@1.34.0'
+import { OpenRouter } from 'npm:@openrouter/sdk'
 
-type Provider = 'chatpdf' | 'gemini'
+type Provider = 'chatpdf' | 'gemini' | 'openrouter'
 
 type ExtractResponse = {
   status: 'extracting' | 'extracted' | 'failed'
@@ -27,6 +28,15 @@ function getEnv(name: string): string {
   const v = Deno.env.get(name)
   if (!v) throw new Error(`Missing env: ${name}`)
   return v
+}
+
+function getEnvOptional(name: string): string | undefined {
+  const v = Deno.env.get(name)?.trim()
+  return v ? v : undefined
+}
+
+function normalizeProvider(provider: unknown): Provider {
+  return provider === 'gemini' || provider === 'openrouter' ? provider : 'chatpdf'
 }
 
 function getBearerToken(req: Request): string {
@@ -246,6 +256,65 @@ async function extractWithGemini(pdfUrl: string, prompt: string, displayName: st
   return text
 }
 
+async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName: string): Promise<string> {
+  const apiKey = getEnv('OPENROUTER_API_KEY')
+  const httpReferer = getEnvOptional('OPENROUTER_HTTP_REFERER')
+  const xTitle = getEnvOptional('OPENROUTER_X_TITLE')
+  const model = getEnvOptional('OPENROUTER_MODEL') ?? 'openrouter/pony-alpha'
+  const pdfEngine = getEnvOptional('OPENROUTER_PDF_ENGINE')
+
+  const defaultHeaders: Record<string, string> = {}
+  if (httpReferer) defaultHeaders['HTTP-Referer'] = httpReferer
+  if (xTitle) defaultHeaders['X-Title'] = xTitle
+
+  const openRouter = new OpenRouter({
+    apiKey,
+    ...(Object.keys(defaultHeaders).length > 0 ? { defaultHeaders } : {}),
+  })
+
+  const filename = displayName.endsWith('.pdf') ? displayName : `${displayName}.pdf`
+  const plugins = pdfEngine
+    ? [
+        {
+          id: 'file-parser',
+          pdf: { engine: pdfEngine },
+        },
+      ]
+    : undefined
+
+  const completion: any = await openRouter.chat.send({
+    model,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          {
+            type: 'file',
+            file: {
+              filename,
+              fileData: pdfUrl,
+            },
+          },
+        ],
+      },
+    ],
+    plugins,
+    stream: false,
+  })
+
+  const content = completion?.choices?.[0]?.message?.content
+  if (typeof content === 'string' && content.trim()) return content
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part: any) => (part?.type === 'text' && typeof part?.text === 'string' ? part.text : ''))
+      .join('')
+      .trim()
+    if (text) return text
+  }
+  throw new Error('OpenRouter returned an empty response.')
+}
+
 serve(async (req) => {
   const corsHeaders = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -257,6 +326,12 @@ serve(async (req) => {
     // so expose them via secrets:
     // - SB_PUBLISHABLE_KEY=sb_publishable_...
     // - SB_SECRET_KEY=sb_secret_...
+    // OpenRouter provider secrets/config:
+    // - OPENROUTER_API_KEY=...
+    // - OPENROUTER_MODEL=... (optional, defaults to anthropic/claude-sonnet-4)
+    // - OPENROUTER_HTTP_REFERER=... (optional)
+    // - OPENROUTER_X_TITLE=... (optional)
+    // - OPENROUTER_PDF_ENGINE=... (optional, e.g. mistral-ocr)
     const publishableKey = getEnv('SB_PUBLISHABLE_KEY')
     const secretKey = getEnv('SB_SECRET_KEY')
 
@@ -287,7 +362,7 @@ serve(async (req) => {
 
     const tableId = body.tableId ?? body.table_id
     const rowId = body.row_id
-    const provider: Provider = body.provider === 'gemini' ? 'gemini' : 'chatpdf'
+    const provider: Provider = normalizeProvider(body.provider)
 
     if (!tableId) return json({ error: 'tableId is required' }, { status: 400, headers: corsHeaders })
     if (!rowId) return json({ error: 'row_id is required' }, { status: 400, headers: corsHeaders })
@@ -418,7 +493,9 @@ serve(async (req) => {
       rawResponse =
         provider === 'gemini'
           ? await extractWithGemini(pdfUrl, prompt, `table-${tableId}-row-${rowId}`)
-          : await extractWithChatPDF(pdfUrl, prompt)
+          : provider === 'openrouter'
+            ? await extractWithOpenRouter(pdfUrl, prompt, `table-${tableId}-row-${rowId}`)
+            : await extractWithChatPDF(pdfUrl, prompt)
 
       const parsed = sanitizeAndParseJSON(rawResponse)
       if (!parsed.success) {

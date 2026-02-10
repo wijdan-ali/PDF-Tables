@@ -489,6 +489,19 @@ export default function SettingsClient({
                 >
                   Gemini
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setAiProvider('openrouter')}
+                  className={[
+                    'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    aiProvider === 'openrouter'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-foreground/80 hover:bg-muted/40',
+                  ].join(' ')}
+                  aria-pressed={aiProvider === 'openrouter'}
+                >
+                  OpenRouter
+                </button>
               </div>
               <div className="mt-3 text-xs text-muted-foreground">
                 This setting is saved to your account and applied to future extractions.

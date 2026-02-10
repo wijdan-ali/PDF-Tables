@@ -10,6 +10,12 @@ interface RouteContext {
   }
 }
 
+type Provider = 'chatpdf' | 'gemini' | 'openrouter'
+
+function normalizeProvider(provider: unknown): Provider {
+  return provider === 'gemini' || provider === 'openrouter' ? provider : 'chatpdf'
+}
+
 export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
     const supabase = await createClient()
@@ -23,8 +29,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     const body = await request.json()
-    const { row_id, provider } = body as { row_id?: string; provider?: 'chatpdf' | 'gemini' | string }
-    const selectedProvider = provider === 'gemini' ? 'gemini' : 'chatpdf'
+    const { row_id, provider } = body as { row_id?: string; provider?: Provider | string }
+    const selectedProvider = normalizeProvider(provider)
 
     if (!row_id) {
       return NextResponse.json(

@@ -4,12 +4,16 @@ import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { AI_PROVIDER_STORAGE_KEY, SIDEBAR_COLLAPSED_KEY } from '@/lib/constants/storage'
 
-export type AiProvider = 'chatpdf' | 'gemini'
+export type AiProvider = 'chatpdf' | 'gemini' | 'openrouter'
+
+function normalizeAiProvider(raw: unknown): AiProvider {
+  return raw === 'gemini' || raw === 'openrouter' ? raw : 'chatpdf'
+}
 
 function readAiProviderLocal(): AiProvider {
   try {
     const raw = localStorage.getItem(AI_PROVIDER_STORAGE_KEY)
-    return raw === 'gemini' ? 'gemini' : 'chatpdf'
+    return normalizeAiProvider(raw)
   } catch {
     return 'chatpdf'
   }
@@ -52,10 +56,9 @@ export function useAiProvider() {
 
         if (cancelled) return
         const pref = settings?.ai_provider
-        if (pref === 'gemini' || pref === 'chatpdf') {
-          setAiProvider(pref)
-          writeAiProviderLocal(pref)
-        }
+        const normalized = normalizeAiProvider(pref)
+        setAiProvider(normalized)
+        writeAiProviderLocal(normalized)
       } finally {
         if (!cancelled) didInitRef.current = true
       }

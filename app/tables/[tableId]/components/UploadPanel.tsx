@@ -126,10 +126,10 @@ export default function UploadPanel({ tableId, columnsCount = 0, isBootstrapping
     )
   }
 
-  const getProvider = (): 'chatpdf' | 'gemini' => {
+  const getProvider = (): 'chatpdf' | 'gemini' | 'openrouter' => {
     try {
       const raw = localStorage.getItem(AI_PROVIDER_STORAGE_KEY)
-      return raw === 'gemini' ? 'gemini' : 'chatpdf'
+      return raw === 'gemini' || raw === 'openrouter' ? raw : 'chatpdf'
     } catch {
       return 'chatpdf'
     }

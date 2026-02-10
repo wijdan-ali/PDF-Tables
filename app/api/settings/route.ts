@@ -2,14 +2,14 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 type ThemePref = 'system' | 'light' | 'dark'
-type AiProvider = 'chatpdf' | 'gemini'
+type AiProvider = 'chatpdf' | 'gemini' | 'openrouter'
 
 function isTheme(x: unknown): x is ThemePref {
   return x === 'system' || x === 'light' || x === 'dark'
 }
 
 function isAiProvider(x: unknown): x is AiProvider {
-  return x === 'chatpdf' || x === 'gemini'
+  return x === 'chatpdf' || x === 'gemini' || x === 'openrouter'
 }
 
 export async function PATCH(req: Request) {
