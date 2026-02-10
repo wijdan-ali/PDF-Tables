@@ -2,7 +2,6 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.90.1'
 import { getCorsHeaders } from '../_shared/cors.ts'
 import { GoogleGenAI, createPartFromUri } from 'npm:@google/genai@1.34.0'
-import { OpenRouter } from 'npm:@openrouter/sdk'
 
 type Provider = 'chatpdf' | 'gemini' | 'openrouter'
 
@@ -263,14 +262,12 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
   const model = getEnvOptional('OPENROUTER_MODEL') ?? 'openrouter/pony-alpha'
   const pdfEngine = getEnvOptional('OPENROUTER_PDF_ENGINE')
 
-  const defaultHeaders: Record<string, string> = {}
-  if (httpReferer) defaultHeaders['HTTP-Referer'] = httpReferer
-  if (xTitle) defaultHeaders['X-Title'] = xTitle
-
-  const openRouter = new OpenRouter({
-    apiKey,
-    ...(Object.keys(defaultHeaders).length > 0 ? { defaultHeaders } : {}),
-  })
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  }
+  if (httpReferer) headers['HTTP-Referer'] = httpReferer
+  if (xTitle) headers['X-Title'] = xTitle
 
   const filename = displayName.endsWith('.pdf') ? displayName : `${displayName}.pdf`
   const plugins = pdfEngine
@@ -282,7 +279,7 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
       ]
     : undefined
 
-  const completion: any = await openRouter.chat.send({
+  const payload = {
     model,
     messages: [
       {
@@ -293,15 +290,32 @@ async function extractWithOpenRouter(pdfUrl: string, prompt: string, displayName
             type: 'file',
             file: {
               filename,
-              fileData: pdfUrl,
+              file_data: pdfUrl,
             },
           },
         ],
       },
     ],
-    plugins,
     stream: false,
-  })
+    ...(plugins ? { plugins } : {}),
+  }
+
+  const completionRes = await fetchWithRetry(
+    'https://openrouter.ai/api/v1/chat/completions',
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    },
+    { maxRetries: 1, baseDelayMs: 800, retryStatus: [429, 500, 502, 503, 504] }
+  )
+
+  if (!completionRes.ok) {
+    const text = await completionRes.text().catch(() => '')
+    throw new Error(`OpenRouter API error: ${completionRes.status} ${text}`)
+  }
+
+  const completion: any = await completionRes.json()
 
   const content = completion?.choices?.[0]?.message?.content
   if (typeof content === 'string' && content.trim()) return content
