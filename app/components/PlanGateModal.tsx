@@ -135,12 +135,18 @@ export default function PlanGateModal({
                   return
                 }
 
-                const qs = new URLSearchParams()
-                qs.set('intent', 'checkout')
-                qs.set('plan', sel.choice)
-                qs.set('interval', sel.interval)
-                qs.set('returnTo', returnTo)
-                router.push(`/start?${qs.toString()}`)
+                const checkoutRes = await fetch(apiPath('/api/billing/checkout-session'), {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ plan: sel.choice, interval: sel.interval, returnTo }),
+                })
+                const checkoutPayload = (await checkoutRes.json().catch(() => ({}))) as any
+                if (!checkoutRes.ok) {
+                  throw new Error(checkoutPayload?.error || 'Failed to create checkout session')
+                }
+                const url = typeof checkoutPayload?.url === 'string' ? checkoutPayload.url : ''
+                if (!url) throw new Error('Missing checkout url')
+                window.location.href = url
               } catch (e) {
                 setError(e instanceof Error ? e.message : 'Failed to continue')
                 setIsWorking(false)

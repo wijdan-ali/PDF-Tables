@@ -71,13 +71,20 @@ export default function BillingClient() {
           try {
             // Trial users (no Stripe subscription yet) should go through Checkout.
             if (tier === 'pro_trial' || tier === 'free') {
-              const qs = new URLSearchParams()
-              qs.set('intent', 'checkout')
-              qs.set('plan', sel.choice)
-              qs.set('interval', sel.interval)
-              qs.set('returnTo', returnTo)
-              router.push(`/start?${qs.toString()}`)
-              return
+              const checkoutRes = await fetch(apiPath('/api/billing/checkout-session'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan: sel.choice, interval: sel.interval, returnTo }),
+              })
+              const checkoutPayload = (await checkoutRes.json().catch(() => ({}))) as any
+              if (!checkoutRes.ok) {
+                throw new Error(checkoutPayload?.error || 'Failed to create checkout session')
+              }
+              if (checkoutPayload?.url) {
+                window.location.href = checkoutPayload.url
+                return
+              }
+              throw new Error('Missing checkout url')
             }
 
             // Starter -> Pro: in-place upgrade with proration.

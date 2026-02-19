@@ -83,6 +83,9 @@ export default function SettingsClient({
   const monthlyLimit = Number(billingMe?.entitlement?.docs_limit_monthly ?? 200)
   const trialUsed = Number(billingMe?.usage?.trial?.docs_extracted ?? 0)
   const trialLimit = Number(billingMe?.entitlement?.docs_limit_trial ?? 50)
+  const trialExpiresAt = billingMe?.entitlement?.trial_expires_at
+  const trialEnded =
+    tier === 'free' && typeof trialExpiresAt === 'string' && new Date(trialExpiresAt).getTime() < Date.now()
 
   const docsRemaining =
     tier === 'starter' ? Math.max(0, monthlyLimit - monthlyUsed) : tier === 'pro_trial' ? Math.max(0, trialLimit - trialUsed) : null
@@ -381,7 +384,9 @@ export default function SettingsClient({
                         ? 'Professional'
                         : tier === 'pro_trial'
                           ? 'Professional (Trial)'
-                          : 'No plan selected'}
+                          : trialEnded
+                            ? 'Trial ended'
+                            : 'No plan selected'}
                   </div>
                 </div>
                 <div className="rounded-xl border border-border bg-card p-3">
@@ -427,6 +432,10 @@ export default function SettingsClient({
                       ? new Date(billingMe.entitlement.trial_expires_at).toLocaleDateString()
                       : 'soon'}
                     .
+                  </div>
+                ) : trialEnded ? (
+                  <div className="text-[12px] text-destructive">
+                    Your trial has ended. Upgrade to continue extracting documents.
                   </div>
                 ) : null}
               </div>
