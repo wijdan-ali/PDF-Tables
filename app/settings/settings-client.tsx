@@ -83,7 +83,7 @@ export default function SettingsClient({
   const monthlyLimit = Number(billingMe?.entitlement?.docs_limit_monthly ?? 200)
   const trialUsed = Number(billingMe?.usage?.trial?.docs_extracted ?? 0)
   const trialLimit = Number(billingMe?.entitlement?.docs_limit_trial ?? 50)
-  const trialExpiresAt = billingMe?.entitlement?.trial_expires_at
+  const trialExpiresAt = billingMe?.entitlement?.trial_expires_at ?? billingMe?.usage?.trial?.trial_expires_at ?? null
   const trialEnded =
     tier === 'free' && typeof trialExpiresAt === 'string' && new Date(trialExpiresAt).getTime() < Date.now()
 

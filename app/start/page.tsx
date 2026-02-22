@@ -6,15 +6,31 @@ type Intent = 'checkout' | 'trial_pro' | 'app'
 type PlanKey = 'starter' | 'pro'
 type Interval = 'month' | 'year'
 
+function readEnv(...keys: string[]): string | null {
+  for (const k of keys) {
+    const v = process.env[k]
+    if (typeof v === 'string' && v.trim()) return v
+  }
+  return null
+}
+
 function isInternalPath(p: unknown): p is string {
   return typeof p === 'string' && p.startsWith('/') && !p.startsWith('//')
 }
 
 function getPriceId(plan: PlanKey, interval: Interval): string | null {
-  if (plan === 'starter' && interval === 'month') return process.env.STRIPE_PRICE_STARTER_MONTH ?? null
-  if (plan === 'starter' && interval === 'year') return process.env.STRIPE_PRICE_STARTER_YEAR ?? null
-  if (plan === 'pro' && interval === 'month') return process.env.STRIPE_PRICE_PRO_MONTH ?? null
-  if (plan === 'pro' && interval === 'year') return process.env.STRIPE_PRICE_PRO_YEAR ?? null
+  if (plan === 'starter' && interval === 'month') {
+    return readEnv('STRIPE_PRICE_STARTER_MONTH', 'NEXT_PUBLIC_STRIPE_PRICE_STARTER_MONTH')
+  }
+  if (plan === 'starter' && interval === 'year') {
+    return readEnv('STRIPE_PRICE_STARTER_YEAR', 'NEXT_PUBLIC_STRIPE_PRICE_STARTER_YEAR')
+  }
+  if (plan === 'pro' && interval === 'month') {
+    return readEnv('STRIPE_PRICE_PRO_MONTH', 'NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTH')
+  }
+  if (plan === 'pro' && interval === 'year') {
+    return readEnv('STRIPE_PRICE_PRO_YEAR', 'NEXT_PUBLIC_STRIPE_PRICE_PRO_YEAR')
+  }
   return null
 }
 

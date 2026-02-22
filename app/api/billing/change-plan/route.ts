@@ -6,11 +6,27 @@ export const runtime = 'nodejs'
 type PlanKey = 'starter' | 'pro'
 type Interval = 'month' | 'year'
 
+function readEnv(...keys: string[]): string | null {
+  for (const k of keys) {
+    const v = process.env[k]
+    if (typeof v === 'string' && v.trim()) return v
+  }
+  return null
+}
+
 function getPriceId(plan: PlanKey, interval: Interval): string | null {
-  if (plan === 'starter' && interval === 'month') return process.env.STRIPE_PRICE_STARTER_MONTH ?? null
-  if (plan === 'starter' && interval === 'year') return process.env.STRIPE_PRICE_STARTER_YEAR ?? null
-  if (plan === 'pro' && interval === 'month') return process.env.STRIPE_PRICE_PRO_MONTH ?? null
-  if (plan === 'pro' && interval === 'year') return process.env.STRIPE_PRICE_PRO_YEAR ?? null
+  if (plan === 'starter' && interval === 'month') {
+    return readEnv('STRIPE_PRICE_STARTER_MONTH', 'NEXT_PUBLIC_STRIPE_PRICE_STARTER_MONTH')
+  }
+  if (plan === 'starter' && interval === 'year') {
+    return readEnv('STRIPE_PRICE_STARTER_YEAR', 'NEXT_PUBLIC_STRIPE_PRICE_STARTER_YEAR')
+  }
+  if (plan === 'pro' && interval === 'month') {
+    return readEnv('STRIPE_PRICE_PRO_MONTH', 'NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTH')
+  }
+  if (plan === 'pro' && interval === 'year') {
+    return readEnv('STRIPE_PRICE_PRO_YEAR', 'NEXT_PUBLIC_STRIPE_PRICE_PRO_YEAR')
+  }
   return null
 }
 
@@ -40,7 +56,20 @@ export async function POST(request: NextRequest) {
     if (!interval) return NextResponse.json({ error: 'interval is required' }, { status: 400 })
 
     const priceId = getPriceId(plan, interval)
-    if (!priceId) return NextResponse.json({ error: 'Stripe price env not configured' }, { status: 500 })
+    if (!priceId) {
+      const key =
+        plan === 'starter' && interval === 'month'
+          ? 'STRIPE_PRICE_STARTER_MONTH'
+          : plan === 'starter' && interval === 'year'
+            ? 'STRIPE_PRICE_STARTER_YEAR'
+            : plan === 'pro' && interval === 'month'
+              ? 'STRIPE_PRICE_PRO_MONTH'
+              : 'STRIPE_PRICE_PRO_YEAR'
+      return NextResponse.json(
+        { error: `Stripe price env not configured: ${key} (or NEXT_PUBLIC_${key})` },
+        { status: 500 }
+      )
+    }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
